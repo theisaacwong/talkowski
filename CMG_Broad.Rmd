@@ -1,0 +1,1056 @@
+---
+title: "CMG_Broad"
+output: html_document
+---
+This code is for reading all the different files from CMG and consolidating them into one set of merged files
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library("stringr")
+library("dplyr")
+library("beepr")
+library("parallel")
+library("plyr")
+library("stringr")
+library("rgl")
+library("StatMeasures")
+```
+
+
+
+```{r}
+# get all file names
+wd <- "C:/Users/iwong/Documents/MGH/CMG"
+files <- list.files(wd)
+samples <- unique(do.call(c, str_extract_all(files, "[^participant_sample_set].*[^\\.tsvzip]")))
+participant_files <- do.call(c, str_extract_all(files, "participant_.*"))
+sample_files <- do.call(c, str_extract_all(files, "sample_.*tsv"))
+entity_files <- paste0("sample_set_", samples, "/sample_set_entity.tsv")
+membership_files <- paste0("sample_set_", samples, "/sample_set_membership.tsv")
+
+# read all particiant files
+participant_list_of_dfs <- lapply(paste0(wd, "/", participant_files), function(x) read.table(x, header = T, stringsAsFactors = F, sep="\t", quote="", fill=F))
+for(i in 1:(length(participant_list_of_dfs))){  participant_list_of_dfs[[i]]$terra_source <- participant_files[i]   }
+participants_df <- rbind.fill(participant_list_of_dfs)
+# sanity check , should be true
+colSums(do.call(rbind, lapply(participant_list_of_dfs, dim)))[[1]] == nrow(participants_df)
+
+# read all sample_ files
+sample_list_of_dfs <- lapply(paste0(wd, "/", sample_files), function(x) read.table(x, header = T, stringsAsFactors = F, sep="\t", quote="", fill=F))
+for(i in 1:(length(sample_list_of_dfs))){  sample_list_of_dfs[[i]]$terra_source <- sample_files[i]   }
+samples_df <- rbind.fill(sample_list_of_dfs)
+# sanity check , should be true
+colSums(do.call(rbind, lapply(sample_list_of_dfs, dim)))[[1]] == nrow(samples_df)
+
+# read all sample_set_identity files
+entity_list_of_dfs <- lapply(paste0(wd, "/", entity_files), function(x) if(file.exists(x)) {
+  temp_df <- read.table(x, header = T, stringsAsFactors = F, sep="\t", quote="", fill=F)
+  temp_df$terra_source <- str_extract(x, "sample_set_.*")
+  return(temp_df)})
+entity_df <- rbind.fill(entity_list_of_dfs)
+
+# read all sample_membership files
+membership_list_of_dfs <- lapply(paste0(wd, "/", membership_files), function(x) if(file.exists(x)) {
+  temp_df <- read.table(x, header = T, stringsAsFactors = F, sep="\t", quote="", fill=F)
+  temp_df$terra_source <- str_extract(x, "sample_set_.*")
+  return(temp_df)})
+membership_df <- rbind.fill(membership_list_of_dfs)
+# sanity check , should be true
+colSums(do.call(rbind, lapply(membership_list_of_dfs, dim)))[[1]] == nrow(membership_df)
+
+# write all files to table
+write.table(participants_df, paste0(wd, "/merged_files/participant.tsv"), sep="\t", col.names = T, row.names = F, quote=F)
+write.table(samples_df, paste0(wd, "/merged_files/samples.tsv"), sep="\t", col.names = T, row.names = F, quote=F)
+write.table(entity_df, paste0(wd, "/merged_files/sample_set_identity.tsv"), sep="\t", col.names = T, row.names = F, quote=F)
+write.table(membership_df, paste0(wd, "/merged_files/sample_set_membership.tsv"), sep="\t", col.names = T, row.names = F, quote=F)
+```
+
+# load from table
+```{r}
+participants <- read.table(paste0(wd, "/merged_files/participant.tsv"), sep="\t", header = T, stringsAsFactors = F, quote="", fill=F)
+samples <- read.table(paste0(wd, "/merged_files/samples.tsv"), sep="\t", header = T, stringsAsFactors = F, quote="", fill=F)
+entity <- read.table(paste0(wd, "/merged_files/sample_set_identity.tsv"), sep="\t", header = T, stringsAsFactors = F, quote="", fill=F)
+membership <- read.table(paste0(wd, "/merged_files/sample_set_membership.tsv"), sep="\t", header = T, stringsAsFactors = F, quote="", fill=F)
+```
+
+# subset crams
+```{r}
+set.seed(123)
+
+cram_only_set <- grepl(".cram", samples$cram_path)
+cram_part_set <- grepl(".cram", samples$cram_or_bam_path)
+
+bothTrues <- cram_only_set & cram_part_set
+cram_part_set[bothTrues] <- F
+
+bam_part_set <- grepl(".bam", samples$cram_or_bam_path)
+
+cram_only_df <- data.frame(mem = "cram_only_", participant = samples$entity.sample_id[cram_only_set])
+group_membership <- sample(1:4, nrow(cram_only_df), replace=T)
+cram_only_df$mem <- paste0(cram_only_df$mem, group_membership)
+
+cram_part_df <- data.frame(mem = "cram_part", participant = samples$entity.sample_id[cram_part_set])
+bam_part_df  <- data.frame(mem = "bam_part",  participant = samples$entity.sample_id[bam_part_set])
+
+mem_df <- rbind(cram_only_df, cram_part_df, bam_part_df)
+colnames(mem_df) <- c("membership:participant_set_id", "participant")
+
+write.table(mem_df, paste0(wd, "/merged_files/membership.tsv"),col.names = T, row.names = F, quote=F, sep="\t")
+```
+
+
+#Vars
+```{r}
+PARTIIPANT_ENTITY_SET <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_entity.tsv"
+INDIVIDUAL_TO_DOWNLOAD <- "bam" 
+PATH_TO_DOWNLOAD_TO <- paste0("C:/Users/iwong/Documents/MGH/CMG/participant_set/", INDIVIDUAL_TO_DOWNLOAD)
+```
+
+#Read the manifest file, download files
+```{r, eval=FALSE}
+entity <- read.table(PARTIIPANT_ENTITY_SET, sep="\t", header=TRUE, stringsAsFactors = FALSE)
+
+#set source and destination download paths
+PATH_IN_GOOGLE_BUCKET <- stringr::str_replace_all(stringr::str_replace_all(entity$output_counts[which(entity$entity.sample_set_id==INDIVIDUAL_TO_DOWNLOAD)], "\\[|\\]", ""), ",", " ")
+
+files <- stringr::str_split(PATH_IN_GOOGLE_BUCKET, " ")[[1]]
+
+#download files, in parallel
+n_cores <- detectCores() - 1
+cl <- makeCluster(n_cores)
+clusterExport(cl=cl, varlist = c("PATH_IN_GOOGLE_BUCKET", "PATH_TO_DOWNLOAD_TO"))
+
+parLapply(cl, files, function(x) system2('gsutil', paste0('cp ', x, ' ',PATH_TO_DOWNLOAD_TO)))
+stopCluster(cl)
+
+#non-parallel method
+#lapply(files, function(x) system2('gsutil', paste0('cp ', x, ' ',PATH_TO_DOWNLOAD_TO)))
+
+beep(3)
+```
+
+
+
+
+# do the pca on the crams
+```{r}
+wd <- "C:/Users/iwong/Documents/MGH/CMG/participant_set/all"
+
+files <- list.files(wd)
+
+bams <-list.files("C:/Users/iwong/Documents/MGH/CMG/participant_set/bam")
+files <- files[!(files %in% bams)]
+
+
+
+myfiles <- lapply(files, function(x) {
+	df <- read.table(paste(wd,x,sep="/"), comment.char = "@", sep="\t", stringsAsFactors=FALSE, header = TRUE);
+	df$id <- str_replace_all(x, ".counts.tsv", "");
+	return(df) 
+	})
+
+ids <- str_replace_all(files, ".counts.tsv","")
+
+df <- do.call(rbind, myfiles)
+df$CONTIG <- str_replace_all(df$CONTIG, "chr", "")
+df$CONTIG[df$CONTIG=="X"] <- 23
+df$CONTIG[df$CONTIG=="Y"] <- 24
+df$CONTIG <- as.numeric(df$CONTIG)
+
+write.table(df, "C:/Users/iwong/Documents/MGH/CMG/participant_set/crams_only.tsv", sep="\t", row.names = T, col.names = T, quote=F)
+df <- read.table("C:/Users/iwong/Documents/MGH/CMG/participant_set/crams_only.tsv", sep="\t", header=T, stringsAsFactors = F)
+
+mydata <- matrix(df$COUNT, ncol=length(files), byrow=FALSE)
+colnames(mydata) <- str_replace(files, ".counts.tsv", "")
+row.names(mydata) <- paste0(myfiles[[1]]$CONTIG, "_", myfiles[[1]]$START, "_", myfiles[[1]]$END)
+
+mydataNormalized <- t(t(mydata)/colSums(mydata))
+
+
+
+indexes_to_remove <- rep(FALSE, nrow(mydata))
+rown <- rownames(mydata)
+chr <- do.call(rbind, str_split(rown, "_"))[,1]
+start <- as.integer( do.call(rbind, str_split(rown, "_"))[,2])
+end <- as.integer( do.call(rbind, str_split(rown, "_"))[,3])
+bool_y <- chr == "chrY"
+bool_x <- chr == "chrX"
+indexes_to_remove[bool_y | bool_x] <- TRUE
+mydata_filtered <- mydata[!indexes_to_remove,]
+mydataNormalized <- t(t(mydata)/colSums(mydata_filtered))
+
+
+
+pca <- prcomp(t(mydataNormalized), rank = 5)
+plot3d(pca$x[,1:3])
+
+write.table(pca$x, "C:/Users/iwong/Documents/MGH/CMG/pca_no_sex.tsv", row.names = T, col.names = T, quote=F, sep="\t")
+x <- read.table("C:/Users/iwong/Documents/MGH/CMG/pca_no_sex.tsv", row.names = 1, header=T, sep="\t")
+```
+
+```{r}
+outliers <- unique(c(outliers(pca$x[,1])$idxOutliers, outliers(pca$x[,2])$idxOutliers, outliers(pca$x[,3])$idxOutliers))
+plot3d(pca$x[-outliers,1:3])
+```
+
+
+#clustering
+##best so far, maximum, complete, n=20
+# 'x' is the pca object
+```{r}
+#set seed, load libraries
+set.seed(123) 
+library("ClusterR")
+library("dendextend")
+library("StatMeasures")
+
+#set the number of clusters you want, this can later be iterated to find the best n
+n <- 20
+dist_mat <- dist(x[,1:3], method="maximum") # 'maximum' is just the best setting in this instance, later when I implement iteration, I will go through all the different settings
+hclust <- hclust(dist_mat, method="complete") # 'complete' is the same as 'maximum' from above
+cut_avg <- cutree(hclust, k=n)
+
+cols <- rainbow(n)[sample(1:n, n)]
+outlier_cluster <- read.table("C:/Users/iwong/Documents/MGH/CMG/outlier_cluster.tsv", sep="\t", stringsAsFactors = F)[,1]
+outlier_indexes <- row.names(x) %in% outlier_cluster
+cols[cut_avg[outlier_cluster]] <- "black"
+
+dend <- as.dendrogram(hclust)
+dend1 <- color_branches(dend, k = n, col=cols)
+plot(dend1, main = "dendrogram")
+
+
+plot3d(x[,1:3], col=cols[cut_avg])
+```
+
+
+#pseudo code for clustering, this should not run, (intentionally)
+#clustering
+##best so far, maximum, complete, n=20
+# 'x' is the pca object
+```{r}
+#set seed, load libraries, 'x' is the pca object
+set.seed(123) 
+library("ClusterR")
+library("dendextend")
+library("StatMeasures")
+
+#set the number of clusters you want, this can later be iterated to find the best n
+n <- 20
+dist_mat <- dist(x[,1:3], method="maximum") # 'maximum' is just the best setting in this instance, later when I implement iteration, I will go through all the different settings
+hclust <- hclust(dist_mat, method="complete") # 'complete' is the same as 'maximum' from above
+cut_avg <- cutree(hclust, k=n)
+cols <- rainbow(n)[sample(1:n, n)]
+
+# this is just standard outlier detection, using standard IQR*1.5 formula, recomended is to manually locate outliers
+outlier_cluster <- unique(c(outliers(x[,1])$idxOutliers, outliers(x[,2])$idxOutliers, outliers(x[,3])$idxOutliers))
+outlier_indexes <- row.names(x) %in% outlier_cluster
+cols[cut_avg[outlier_cluster]] <- "black"
+
+#manually filter out outliers, first by sorting them and removing the 'ends' of the sorted list until satisfacotry
+pc1s <- order(x[,1], decreasing = TRUE)
+pc2s <- order(x[,2], decreasing = TRUE)
+pc3s <- order(x[,3], decreasing = TRUE)
+nr <- nrow(x)
+outs_pc1s <- pc1s[-c(1:2, nr:(nr-1))] # list the speific outliers you want to remove
+outs_pc2s <- pc2s[]
+outs_pc3s <- pc3s[-c(1:2, nr:(nr-6))]
+outliers <- intersect(outs_pc1s, intersect(outs_pc2s, outs_pc3s))
+outliers_manual <- !(row.names(x) %in% row.names(x[outliers,]))
+cols[cut_avg[outlier_cluster]] <- "black"
+
+
+dend <- as.dendrogram(hclust)
+dend1 <- color_branches(dend, k = n, col=cols)
+plot(dend1, main = "dendrogram")
+
+
+plot3d(x[,1:3], col=cols[cut_avg])
+```
+
+
+#3d rotate
+```{r}
+open3d()
+plot3d(x[,1:3], col="grey")
+if (!rgl.useNULL())
+  play3d(spin3d(axis = c(1, 1, 1), rpm = 1), duration = 120)
+```
+
+
+#save dendrogram as pdf
+```{r}
+pdf(paste0(wd, "/rplot.pdf") )
+plot(dend1, main = "dist: Maximum; method: complete; n=19")
+#fviz_eig(pca)
+dev.off()
+
+
+library(factoextra)
+fviz_eig(pca)
+```
+
+
+
+```{r}
+set.seed(123)
+cut_avg <- cutree(hclust, k=n)
+cut_avg[which(cut_avg==13)] <- 12
+cut_avg[which(cut_avg==20)] <- 13
+clusters <- paste0("cluster_", LETTERS[cut_avg])
+
+n_clusters <- length(unique(clusters))
+target_size <- 200
+n_grps <- sapply(floor(table(clusters)/target_size), max, 1)
+
+cluster_labels <- paste0(clusters, "_")
+for(i in 1:n_clusters){
+  n_grps <- max(1, round(table(clusters)[i]/target_size))
+  sub_grps <- sample(1:n_grps, table(clusters)[i], replace=TRUE)
+  target_cluster <- which(clusters == row.names(table(clusters))[i])
+  cluster_labels[target_cluster] <- paste0(cluster_labels[target_cluster], sub_grps)
+}
+
+
+too_big <- names(table(cluster_labels)[which(table(cluster_labels) > 250)])
+new_cluster_labels <- cluster_labels
+for(i in 1:(length(too_big))){
+  n_replace <- length(which(new_cluster_labels == too_big[i]))
+  which_replace <- which(new_cluster_labels == too_big[i])
+  new_cluster_labels[which_replace][1:200] <- paste0(too_big[i], "_1")
+  new_cluster_labels[which_replace][201:n_replace] <- paste0(too_big[i], "_2")
+  
+}
+
+new_cluster_labels[which(new_cluster_labels=="cluster_F_1_2")] <- "cluster_F_1_1"
+
+df <- data.frame(id = row.names(x), group=cluster_labels)
+write.table(df, "C:/Users/iwong/Documents/MGH/CMG/cluster_labels.tsv", quote=F, sep="\t", row.names=F, col.names=T)
+
+df <- data.frame(id = row.names(x), group=new_cluster_labels)
+write.table(df, "C:/Users/iwong/Documents/MGH/CMG/cluster_labels_new_v1.4.tsv", quote=F, sep="\t", row.names=F, col.names=T)
+```
+
+
+#re-write the sample id's
+```{r}
+df1 <- read.table("C:/Users/iwong/Documents/MGH/CMG/sample.tsv", sep="\t", header=T, stringsAsFactors = F)
+fake_ids <- str_replace(str_replace(df1$path_data, ".*/", ""), "(.bam|.cram)", "")
+real_ids <- df1$entity.sample_id
+
+df$real_id <- rep(0, nrow(df))
+df$real_id <- sapply(1:(nrow(df)), function(x) real_ids[which(fake_ids == df$id[x])])
+
+write.table(df, "C:/Users/iwong/Documents/MGH/CMG/samples.tsv", quote=F, sep="\t", row.names=F, col.names=T)
+```
+str_replace(str_replace(gs_path, “.*/“, “”), “(.bam|.cram)“, “”)
+
+
+# TODO: in sample_set, find path for out_couts_exons and output_counts_barcode, and link to sample and include a column for 
+```{r}
+df1 <- read.table("C:/Users/iwong/Documents/MGH/CMG/sample.tsv", sep="\t", header=T, stringsAsFactors = F, quote="", fill=F)
+df2 <- read.table("C:/Users/iwong/Documents/MGH/CMG/sample_set_entity.tsv", sep="\t", header=T, stringsAsFactors = F, quote="", fill=F)
+
+crams <- paste0("cram_", 1:8)
+df2 <- df2[df2$entity.sample_set_id %in% crams,]
+
+fake_ids <- str_replace(str_replace(df1$path_data, ".*/", ""), "(.cram)", "") # ERROR
+real_ids <- df1$entity.sample_id
+
+n1 <- nrow(df2)
+
+output_counts_barcode <- do.call(c, sapply(1:n1, function(x) str_split( str_replace_all(df2$output_counts_barcode[x], "\\]|\\[|\"|\\\\", "")  , ",")))
+output_counts_exons <- do.call(c, sapply(1:n1, function(x) str_split( str_replace_all(df2$output_counts_exons[x], "\\]|\\[|\"|\\\\", "")  , ",")))
+output_sample_id <- do.call(c, sapply(1:n1, function(x) str_split( str_replace_all(df2$output_sample_id[x], "\\]|\\[|\"|\\\\", "")  , ",")))
+
+n <- length(output_sample_id)
+
+output_sample_real_id <-sapply(1:n, function(x) real_ids[which(fake_ids == output_sample_id[x])])
+
+df3 <- data.frame(output_sample_real_id, output_counts_barcode, output_counts_exons)
+write.table(df3, "C:/Users/iwong/Documents/MGH/CMG/new_fields_for_samples.tsv", quote=F, sep="\t", row.names=F, col.names=T)
+```
+
+# join the df3 and the sample.tsv from terra 
+
+```{r}
+df3 <- read.table("C:/Users/iwong/Documents/MGH/CMG/new_fields_for_samples.tsv", sep="\t", header=T)
+sample <- read.table("C:/Users/iwong/Documents/MGH/CMG/sample.tsv", sep="\t", header=T)
+
+colnames(df3) <- c("entity.sample_id", "output_counts_barcode", "output_counts_exons")
+
+df4 <- merge(sample, df3, by="entity.sample_id", all=T)
+write.table(df4, "C:/Users/iwong/Documents/MGH/CMG/sample.tsv", sep="\t", col.names = T, row.names = F, quote=F)
+
+temp1 <- df4$entity.sample_id[df4$exist==F]
+write.table(temp1, "C:/Users/iwong/Documents/MGH/CMG/does_not_exist.tsv", sep="\t", col.names = T, row.names = F, quote=F)
+temp2 <- merge(df4, samples, by = "entity.sample_id", all=T)
+temp3 <- temp2[temp2$exist==F,]
+temp4 <- data.frame(temp3$entity.sample_id, temp3$terra_source)
+write.table(temp4, "C:/Users/iwong/Documents/MGH/CMG/does_not_exist.tsv", sep="\t", col.names = T, row.names = F, quote=F)
+```
+
+
+
+
+# the regex had to be edited, because some .bams and .crams have the same name
+
+
+
+take out all x and y and overlaps for pca
+```{r}
+
+#Dear isaac, the variable declaration for 'mydata_no_outliers' was deleted somewhere and I (me, who is you, which is us), and unsure what is was originally, here, I am taking my best guess. so good luck with everything
+
+to_remove_df <- read.table("C:/Users/iwong/Documents/MGH/CMG/gnomad_cnv_com_hg38.txt", sep="\t", header=T)
+to_remove_df$X.chrom <- str_replace(to_remove_df$X.chrom, "_.*", "")
+to_remove_intervals <- paste(to_remove_df$X.chrom,to_remove_df$start, to_remove_df$end, sep="_")
+table(rownames(mydata_no_outliers) %in% to_remove_intervals)
+
+rown <- rownames(mydata_no_outliers)
+chr <- do.call(rbind, str_split(rown, "_"))[,1]
+start <- as.integer( do.call(rbind, str_split(rown, "_"))[,2])
+end <- as.integer( do.call(rbind, str_split(rown, "_"))[,3])
+i <- length(start)
+
+indexes_to_remove <- rep(FALSE, i)
+
+for(x in 1:(length(chr))){
+  bool_chr <- chr[x] == to_remove_df$X.chrom
+  bool_start <- (start[x] - to_remove_df$end) <= 0
+  bool_end <- (end[x] - to_remove_df$start) >= 0
+  bool_overlap <- bool_chr & bool_start & bool_end
+  if(all(!bool_overlap)){
+    indexes_to_remove[x] <- TRUE  
+  }
+}
+
+bool_y <- chr == "chrY"
+bool_x <- chr == "chrX"
+indexes_to_remove[bool_y | bool_x] <- TRUE
+
+mydata_no_outliers_filtered <- mydata_no_outliers[!indexes_to_remove,]
+mydata_no_outliers_filtered_normalized <- t(t(mydata_no_outliers_filtered)/colSums(mydata_no_outliers_filtered))
+pca <- prcomp(t(mydata_no_outliers_filtered_normalized))
+
+
+bams <- str_replace_all(list.files("C:/Users/iwong/Documents/MGH/CMG/participant_set/bam"), ".counts.tsv", "")
+bam_indexes <- row.names(pca$x) %in% bams
+cols <- rep(1, nrow(pca$x))
+cols[bam_indexes] <- 2
+colors <- c("red", "blue")
+plot3d(pca$x[,1:3], col = colors[cols])
+
+```
+
+
+
+# do PCA on the bam files ?? not used
+```{r}
+wd <- "C:/Users/iwong/Documents/MGH/CMG/participant_set/bam"
+
+files <- list.files(wd)
+
+bams <-list.files("C:/Users/iwong/Documents/MGH/CMG/participant_set/bam")
+
+
+myfiles <- lapply(files, function(x) {
+	df <- read.table(paste(wd,x,sep="/"), comment.char = "@", sep="\t", stringsAsFactors=FALSE, header = TRUE);
+	df$id <- str_replace_all(x, ".counts.tsv", "");
+	return(df) 
+	})
+
+ids <- str_replace_all(files, ".counts.tsv","")
+
+df <- do.call(rbind, myfiles)
+df$CONTIG <- str_replace_all(df$CONTIG, "chr", "")
+df$CONTIG[df$CONTIG=="X"] <- 23
+df$CONTIG[df$CONTIG=="Y"] <- 24
+df$CONTIG <- as.numeric(df$CONTIG)
+
+write.table(df, "C:/Users/iwong/Documents/MGH/CMG/participant_set/bams_only.tsv", sep="\t", row.names = T, col.names = T, quote=F)
+df <- read.table("C:/Users/iwong/Documents/MGH/CMG/participant_set/bams_only.tsv", sep="\t", header=T, stringsAsFactors = F)
+
+mydata <- matrix(df$COUNT, ncol=length(files), byrow=FALSE)
+colnames(mydata) <- str_replace(files, ".counts.tsv", "")
+row.names(mydata) <- paste0(myfiles[[1]]$CONTIG, "_", myfiles[[1]]$START, "_", myfiles[[1]]$END)
+
+mydataNormalized <- t(t(mydata)/colSums(mydata))
+
+
+
+indexes_to_remove <- rep(FALSE, nrow(mydata))
+rown <- rownames(mydata)
+chr <- do.call(rbind, str_split(rown, "_"))[,1]
+start <- as.integer( do.call(rbind, str_split(rown, "_"))[,2])
+end <- as.integer( do.call(rbind, str_split(rown, "_"))[,3])
+bool_y <- chr == "chrY"
+bool_x <- chr == "chrX"
+indexes_to_remove[bool_y | bool_x] <- TRUE
+mydata_filtered <- mydata[!indexes_to_remove,]
+mydataNormalized <- t(t(mydata)/colSums(mydata_filtered))
+
+
+
+pca <- prcomp(t(mydataNormalized), rank = 5)
+plot3d(pca$x[,1:3])
+
+write.table(pca$x, "C:/Users/iwong/Documents/MGH/CMG/pca_no_sex_bams.tsv", row.names = T, col.names = T, quote=F, sep="\t")
+x <- read.table("C:/Users/iwong/Documents/MGH/CMG/pca_no_sex_bams.tsv", row.names = 1, header=T, sep="\t")
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library("stringr")
+library("dplyr")
+library("beepr")
+library("parallel")
+df <- read.table("C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/sample_set_membership.tsv", sep="\t", head=TRUE, stringsAsFactors = FALSE)
+individuals <- sort(unique(df$membership.sample_set_id))
+individuals <- individuals[!grepl("cram|bam|missing", individuals)]
+wd <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/"
+PARTIIPANT_ENTITY_SET <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/sample_set_entity.tsv"
+entity <- read.table(PARTIIPANT_ENTITY_SET, sep="\t", header=TRUE, stringsAsFactors = FALSE)
+all_bed_paths <- data.frame(ind=individuals, bed_path=rep("0", length(individuals)), stringsAsFactors = FALSE)
+
+my.read.table <- function(file) {
+  clean.lines <- sub("##.*", "", readLines(file))
+  clean.lines <- sub("#", "", clean.lines)
+  read.table(text = paste(clean.lines, collapse = "\n"), sep="\t", header = TRUE, stringsAsFactors = FALSE)
+}
+
+write.bed.intermediate <- function(inputFolder, str_n){
+  files <- list.files(inputFolder)
+  files <- files[grep("vcf$", files)]
+  df1 <- lapply(files, function(x) {
+    df <- my.read.table(paste0(inputFolder, "/", x))
+    df$SAMPLE <- colnames(df)[10]
+    colnames(df)[10] <- "IND"
+    return(df[!str_detect(df[,10], "^0"),])
+  })
+  df2 <- dplyr::bind_rows(df1)
+  flags <- str_split_fixed(do.call(rbind, df1)$IND, ":", n=7)
+  coords <- str_split_fixed(do.call(rbind, df1)$ID, "_", n=4)
+  
+  # write to a BED file formet
+  bed <- data.frame(chr = df2$CHROM)
+  bed$start <- df2$POS
+  bed$end <- as.integer(coords[,4])
+  
+  bed$name <- str_n
+  bed$sample <- df2$SAMPLE
+  
+  bed$cn <- as.integer(flags[,2])
+  bed$qs <- flags[,5]
+  bed$size <- bed$end - bed$start
+  
+  bed$copy_num <- as.integer(flags[,2])
+  bed$np <- flags[,3]
+  
+  # filter out non-reference
+  #bed <- bed[flags[,1] == 0,]
+  
+  #write.table(bed, paste0(str_n, ".bed"),sep="\t") # don't do this anymore,
+  return(bed)
+}
+
+reformat <- function(df, c){
+  n <- nrow(df)
+  DEL <- "DEL"
+  DUP <- "DUP"
+  df$cn[df$chr=="X"] <- ifelse(df$cn[df$chr=="X"]  >= 2, DUP, DEL)
+  df$cn[df$chr=="Y"] <- ifelse(df$cn[df$chr=="Y"] >= 1, DUP, DEL)
+  df$cn[df$chr!="X" & df$chr!="Y"] <- ifelse(df$cn[df$chr!="X" & df$chr!="Y"] >=2, DUP, DEL)
+  df$name <- paste0(c, "_cnv_", 1:n) 
+  return(df)
+}
+```
+
+# gCNV output analysis
+```{r}
+n_cores <- detectCores() - 1
+cl <- makeCluster(n_cores)
+
+# yes i know seq_along is better but I sometimes want to not start at 1
+for(current_ind in 2:(length(individuals))){
+  INDIVIDUAL_TO_DOWNLOAD <- individuals[current_ind] 
+  PATH_TO_DOWNLOAD_TO <- paste0(wd, INDIVIDUAL_TO_DOWNLOAD)
+  if(dir.exists(PATH_TO_DOWNLOAD_TO) == FALSE){
+    dir.create(PATH_TO_DOWNLOAD_TO)
+  }
+  print(PATH_TO_DOWNLOAD_TO)
+  PATH_IN_GOOGLE_BUCKET <- stringr::str_replace_all(stringr::str_replace_all(entity$segments_vcfs[which(entity$entity.sample_set_id==INDIVIDUAL_TO_DOWNLOAD)], "\\[|\\]", ""), ",", " ")
+  
+  files <- stringr::str_split(PATH_IN_GOOGLE_BUCKET, " ")[[1]]
+  
+  clusterExport(cl=cl, varlist = c("PATH_IN_GOOGLE_BUCKET", "PATH_TO_DOWNLOAD_TO", "files"))
+  
+  parLapply(cl, files, function(x) system2('gsutil', paste0('cp ', x, ' ',PATH_TO_DOWNLOAD_TO)))
+  
+  system2("bash", paste0("-c \"gunzip -k /mnt/c/", str_replace_all(PATH_TO_DOWNLOAD_TO, "C:/", ""), "/*gz\""  )    )
+  
+  
+  bed1 <- write.bed.intermediate(PATH_TO_DOWNLOAD_TO, INDIVIDUAL_TO_DOWNLOAD)
+  
+  
+  ##re-formtat for svtk bedcluster
+  bed2<- reformat(bed1, INDIVIDUAL_TO_DOWNLOAD)
+  
+  input_bed <- paste0(PATH_TO_DOWNLOAD_TO, "/", INDIVIDUAL_TO_DOWNLOAD, ".bed")
+  write.table(bed2, input_bed, sep="\t", col.names = TRUE, quote = FALSE, row.names = FALSE)
+  all_bed_paths$bed_path[which(all_bed_paths$ind==INDIVIDUAL_TO_DOWNLOAD)] <- input_bed
+  
+}
+stopCluster(cl)
+beep(3) 
+```
+
+
+
+#prepare for svtk bedcluster - isaac
+#version 1
+```{r}
+all_bed_paths$size <- 0
+filt <- rep(FALSE, 38)
+for(i in seq_along(individuals)){
+  all_bed_paths$bed_path[which(all_bed_paths$ind==individuals[i])] <- paste0(wd, individuals[i], "/", individuals[i], ".bed")  
+  all_bed_paths$size[i] <- table(df$membership.sample_set_id)[which(names(table(df$membership.sample_set_id)) ==  individuals[i])]
+  filt[i] <- all_bed_paths$size[i] > 100
+}
+
+
+filt_bed <- all_bed_paths[filt,]
+
+
+all_bed <- do.call(rbind, lapply(1:(nrow(filt_bed)), function(x) {
+  df_temp<-read.table(filt_bed$bed_path[x], sep="\t", header = TRUE, stringsAsFactors = FALSE)
+  df_temp$group <- filt_bed$ind[x]
+  return(df_temp)}))
+write.table(all_bed, paste0(wd, "full_merged_bed.bed"), sep="\t", col.names = FALSE, quote=FALSE, row.names = FALSE)
+
+#system2("bash", paste0("-c \"sed '1s;^;#;' ", str_replace_all(wd, "C:/", "/mnt/c/"),"full_merged_bed.bed > ", str_replace_all(wd, "C:/", "/mnt/c/"), "full_merged_bed_svtk_input.bed\""))
+
+#split the bed file by chromosome, run bedcluster individually
+chromosomes <- paste0(unique(all_bed$chr), "\\t")
+chromos <- unique(all_bed$chr)
+grepped_chromosomes <- vector("list", length = length(chromosomes))
+grep_out_chroms <- rep(0, length(chromosomes))
+for(i in seq_along(chromosomes)){
+  #this takes too long, calling unix system grep is faster
+  #grepped_chromosomes[i] <- grep(chromosomes[i], all_bed)
+  
+  grep_out_chroms[i] <- paste0("grep -P \"", chromosomes[i] ,"\" ", str_replace_all(wd, "C:/", "/mnt/c/")  ,"full_merged_bed_svtk_input.bed > ", str_replace_all(wd, "C:/", "/mnt/c/"), "full_merged_bed_svtk_input_", chromos[i], ".bed")
+}
+
+
+for(i in seq_along(chromosomes)){
+  system(paste0("bash -c '", grep_out_chroms[i], "'"))# system2 doesn't work??
+}
+
+
+for(i in seq_along(chromos)){
+  system(paste0("bash -c ", "'source /home/isaac/svtk.sh ", str_replace_all(wd, "C:/", "/mnt/c/"), "full_merged_bed_svtk_input_", chromos[i],".bed ", str_replace_all(wd, "C:/", "/mnt/c/"),"full_merged_bed_svtk_output_", chromos[i],".bed'"))
+}
+
+
+
+
+
+```
+
+
+#version 2, based on jack's code
+```{r}
+wd <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_10_1_19/svtk_inputs/"
+outdir <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_10_1_19/svtk_outputs/"
+files <- list.files(wd)
+
+for(f in files){
+  system(paste0("bash -c \"sed -i 's/^chr\t/#chr\t/g' ", str_replace_all(wd, "C:", "/mnt/c"), f , "\""))  
+}
+
+script <- c("
+#!/bin/bash
+#BSUB -J svtk_bedcluster_1
+#BSUB -o /data/talkowski/iwong/log_files/svtk_bedcluster_1.log
+#BSUB -e /data/talkwoski/iwong/err_files/svtk_bedcluster_1.err
+#BSUB -q big
+#BSUB -n 1
+#BSUB mem=64G
+#BSUB swp=64G
+
+
+source activate iwong1
+module load R/3.5.1-foss-2018b
+
+")
+
+calls <- c(
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_A_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_A_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_A_2.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_A_2_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_A_3.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_A_3_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_A_4.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_A_4_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_B_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_B_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_B_2.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_B_2_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_B_3.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_B_3_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_B_4.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_B_4_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_C_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_C_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_C_2.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_C_2_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_C_3.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_C_3_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_D_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_D_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_D_2.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_D_2_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_D_3.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_D_3_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_D_4.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_D_4_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_D_5.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_D_5_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_D_6.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_D_6_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_E_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_E_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_E_2.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_E_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_F_1_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_F_1_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_G_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_G_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_H_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_H_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_H_2.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_H_2_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_H_3.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_H_3_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_H_4.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_H_4_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_H_5.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_H_5_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_I_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_I_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_J_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_J_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_K_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_K_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_L_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_L_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_M_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_M_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_N_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_N_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_O_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_O_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_P_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_P_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_P_2.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_P_2_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_Q_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_Q_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_R_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_R_1_svtk_output.bed",
+"svtk bedcluster /data/talkowski/iwong/CMG/calls/svtk_inputs/cluster_S_1.bed /data/talkowski/iwong/CMG/calls/svtk_inputs_lsf/cluster_S_1_svtk_output.bed")
+
+
+
+for(i in seq_along(calls)){
+  temp <- paste0(script[1], calls[i])
+  writeLines(temp, con=paste0(outdir,files[i], ".lsf"))
+}
+
+```
+
+
+# svtk, using jack's code
+```{r}
+divideMultiple <- function(svtk){
+    svtk_multi <- svtk[str_detect(svtk$call_name, ","),]
+    splits <- str_split(svtk_multi$call_name, ",")
+    lens <- sapply(splits, length)
+    expanded <- data.frame(name=rep(svtk_multi[,1], times=lens), call_name=unlist(splits))
+    svtk <- svtk[-which(str_detect(svtk$call_name, ",")),]
+    svtk <- rbind(svtk, expanded)
+    return(svtk)
+}
+
+gcnv_defragged <- all_bed
+gcnv_defragged$batch <- paste0(gcnv_defragged$group)
+
+gcnv_defragged$id <- 1:dim(gcnv_defragged)[1]
+gcnv_defragged$cluster <- str_replace(gcnv_defragged$batch, "((CASE)|(COHORT))_", "")
+for(clust in unique(gcnv_defragged$cluster)){
+    message(clust)
+    out_bed <- paste0("C:/Users/iwong/Documents/MGH/CMG/temp_jack/hg19_raw_cluster_", clust, ".bed")
+    out_bed_clust <- paste0("C:/Users/iwong/Documents/MGH/CMG/temp_jack/hg19_clustered_", clust, ".bed")
+    gcnv_sub <- gcnv_defragged[gcnv_defragged$cluster==clust,]
+    svtk_bed <- data.frame(chr=gcnv_sub$chr, start=gcnv_sub$start, end=gcnv_sub$end, name=gcnv_sub$id, sample=gcnv_sub$sample, svtype=gcnv_sub$cn)
+    write.table(svtk_bed, row.names=F, col.names=F, quote=F, sep="\t", file=out_bed)
+    #system2("svtk", paste0("bedcluster ", out_bed, " ", out_bed_clust))
+}
+### second round clustering
+svtk_second <- NULL
+for(clust in unique(gcnv_defragged$cluster)){
+    message(clust)
+    out_bed_clust <- paste0("C:/Users/iwong/Documents/MGH/CMG/temp_jack/", clust, "_svtk_output.bed")
+    svtk_clust <- read.table(out_bed_clust, comment="@", header=TRUE)
+        ids <- unique(svtk_clust$name)
+        svtk_clust <- svtk_clust[match(ids, svtk_clust$name),]
+        svtk_bed <- data.frame(chr=svtk_clust$X.chrom, start=svtk_clust$start, end=svtk_clust$end, name=paste0(clust, "__", svtk_clust$name), sample=clust, svtype=svtk_clust$svtype)
+        svtk_second <- rbind(svtk_second, svtk_bed)
+}
+
+
+
+write.table(svtk_second, row.names=F, col.names=F, quote=F, sep="\t", file="C:/Users/iwong/Documents/MGH/CMG/temp_jack/hg19_1st_round.bed")
+    system2("svtk", "bedcluster /Users/jackfu/Documents/00_Postdoc/18-10-gCNV_deploy/batches/results_hg19_2/clustering/hg19_1st_round.bed /Users/jackfu/Documents/00_Postdoc/18-10-gCNV_deploy/batches/results_hg19_2/hg19_2nd_round.bed")
+
+svtk_master <- read.table("C:/Users/iwong/Documents/MGH/CMG/temp_jack/hg19_2nd_round.bed", header=TRUE, comment="@")
+    svtk_map <- svtk_master[,c("name", "call_name")]
+    svtk_map <- divideMultiple(svtk_map)
+    svtk_map[,1] <- as.character(svtk_map[,1]); svtk_map[,2] <- as.character(svtk_map[,2])
+
+svtk_full <- NULL
+for(clust in unique(gcnv_defragged$cluster)){
+    message(clust)
+    out_bed_clust <- paste0("C:/Users/iwong/Documents/MGH/CMG/temp_jack/", clust, "_svtk_output.bed")
+    svtk_clust <- read.table(out_bed_clust, comment="@", header=TRUE, stringsAsFactors=FALSE)
+        mat <- match(paste0(clust, "__", svtk_clust$name), svtk_map$call_name)
+        svtk_clust$name <- svtk_map$name[mat]
+    svtk_full <- rbind(svtk_full, svtk_clust)
+}
+#svtk_full <- divideMultiple(svtk_full[,c("name", "call_name")])
+svtk_full <- divideMultiple(svtk_full)
+write.table(svtk_full, row.names=F, col.names=T, quote=F, sep="\t", file="C:/Users/iwong/Documents/MGH/CMG/temp_jack/svtk_full.bed")
+```
+
+
+#use java match
+```{r}
+match <- "C:/Users/iwong/Documents/MGH/scripts/gCNV_svtk_match.jar"
+system2("java", paste0("-jar ", match, " --help"))
+system2("java", paste0("-jar ", match, " ", paste0(wd, "full_merged_bed.bed "), paste0(wd, "full_merged_bed_svtk_output.bed "), paste0(wd, "full_merged_svtk_java_out_temp2.bed")))
+```
+
+
+#after read file from java output
+```{r}
+wd <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/"
+clustered <- read.table(paste0(wd, "full_merged_svtk_java_out.bed"),  stringsAsFactors = FALSE, sep="\t", header = TRUE)
+clustered$group <- str_extract(clustered$call_name, "cluster_.{3}")
+save(clustered, file = "C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/clusteredDF.rda")
+#load("C:/Users/iwong/Documents/MGH/CMG/sample_set_10_1_19/clusteredDF.rda")
+
+threshold_value <- 100
+failed_threshold <- names(which(table(clustered$sample) > threshold_value))
+thresholded <- clustered[!(clustered$sample %in% failed_threshold),]
+
+filtered_dups <- thresholded$svtype == "DUP" & thresholded$qs >= 50
+filtered_dels <- thresholded$svtype == "DEL" & thresholded$qs >= 100
+filtered_vafs <- thresholded$vaf <= 0.01
+filtered <- thresholded[(filtered_dups | filtered_dels) & filtered_vafs ,]
+filtered <- thresholded[filtered_vafs,]
+
+write.table(filtered, paste0(wd, "/filtered_clustered_Calls.tsv"), sep="\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
+
+
+df1 <- filtered
+groups<- unique(df1$group)
+n <- length(groups)
+a <- sapply(1:n, function(x) length(which(as.numeric(table(df1$sample[df1$group==groups[x]]))>100)))
+
+b <- sapply(1:n, function(x) length
+            (which(as.numeric(
+              table(df1$sample[df1$group==groups[x] & df1$vaf <= 0.01 & df1$qs >= 100]))>=10)))
+
+c <- sapply(1:n, function(x) length(
+  unique(union(
+    names(which(table(df1$sample[df1$group==groups[x] & df1$vaf <= 0.01 & df1$qs >= 100])>=10)),
+    names(which(table(df1$sample[df1$group==groups[x]])>100)   )))))
+
+num_samples <- sapply(1:n, function(x) as.numeric(table(df1$group)[names(table(df1$group)) == groups[x]]))
+
+#100% overlap?!?!
+for(x in 1:n){
+  temp1 <- names(which(table(df1$sample[df1$group==groups[x] & df1$vaf < 0.01])>10))
+  temp2 <- names(which(table(df1$sample[df1$group==groups[x]])>100)   )
+  print(all(temp2 %in% temp1))
+}
+
+df <- rbind(a=a, b=b, c=c, num_samples=num_samples)
+colnames(df) <- groups
+df
+#write.table(df, "C:/Users/iwong/Documents/MGH/CMG/participant_set/results/analysis.tsv", sep="\t")
+
+hist(as.numeric(table(df1$sample[df1$qs >= 100 & df1$vaf <= 0.01])), main="hist of vaf<=0.01, qs>=100 CNVs per sample", xlab="counts", col="grey")
+hist(log10(as.numeric(table(df1$sample[df1$qs >= 100 & df1$vaf <= 0.01]))), main="log10 hist of vaf<=0.01, qs>=100 CNVs per sample", xlab="counts", col="grey")
+```
+
+
+
+
+
+#further data munging, using sliding QS cutoffs, can you make a figure about how many total variants there are, and the distribution of variant counts across samples? try 10, 20, 30, 40, 50
+```{r}
+wd <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/"
+#load("C:/Users/iwong/Documents/MGH/CMG/sample_set_10_1_19/clusteredDF.rda")
+threshold_value <- 100
+failed_threshold <- names(which(table(clustered$sample) > threshold_value))
+thresholded <- clustered[!(clustered$sample %in% failed_threshold),]
+
+qs_window <- c(10, 20, 30, 40, 50)
+total_variants <- rep(0, length(qs_window))
+variant_counts <- vector("list", length(qs_window))
+
+for(i in seq_along(qs_window)){
+  filtered_qs <- thresholded$qs >= qs_window[i]
+  filtered_vafs <- thresholded$vaf <= 0.01
+  filtered <- thresholded[filtered_qs & filtered_vafs ,]
+  total_variants[i] <- length(unique(filtered$name))
+  variant_counts[[i]] <- as.numeric(table(filtered$sample))
+}
+
+df <- data.frame(qs_threshold=qs_window, total_variants)
+
+
+for(i in seq_along(variant_counts)){
+  hist(variant_counts[[i]], xlab="variants per sample", ylab="frequency", ylim=c(0,5000), xlim=c(0,80), main=paste0("QS: ", qs_window[i]), col="grey")
+}
+
+boxplot(variant_counts, names = qs_window, xlab="QS threshold", ylab="variants per sample", outline = FALSE)
+
+
+```
+
+
+
+#proces/identify new data
+```{r}
+wd <- "C:/Users/iwong/Documents/MGH/CMG/"
+processed_data <- read.table(paste0(wd, "sample_set_10_15_19/sample_set_membership.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE)
+new_data_paths <- str_subset(list.files(paste0(wd, "new_data_added")), ".tsv$")
+new_data_list <- lapply(new_data_paths, function(x){ 
+  df<-read.table(paste0(wd, "new_data_added/", x), sep="\t", header=TRUE, stringsAsFactors=FALSE)
+  df$source <- str_replace_all(x, "(sample_)|(\\.tsv)", "")
+  return(df)})
+new_data_df <- rbind.fill(new_data_list)
+
+new_samples <- new_data_df$entity.sample_id
+done_samples <- processed_data$sample
+
+bool_exists <- new_samples %in% done_samples
+
+to_process <- new_data_df[!bool_exists,]
+
+
+write.table(to_process, paste0(wd, "new_data_added/new_data_to_process.tsv"), sep="\t", quote=FALSE, row.names=FALSE,col.names=TRUE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## for running on erisone
+```{r}
+library("stringr")
+library("dplyr")
+library("beepr")
+library("parallel")
+df <- read.table("/data/talkowski/iwong/CMG/calls/samples.tsv", sep="\t", head=TRUE, stringsAsFactors = FALSE)
+individuals <- sort(unique(df$membership.sample_set_id))
+wd <- "/data/talkowski/iwong/CMG/calls/"
+PARTIIPANT_ENTITY_SET <- "/data/talkowski/iwong/CMG/calls/sample_set_entity.tsv"
+entity <- read.table(PARTIIPANT_ENTITY_SET, sep="\t", header=TRUE, stringsAsFactors = FALSE)
+all_bed_paths <- data.frame(ind=individuals, bed_path=rep("0", length(individuals)), stringsAsFactors = FALSE)
+
+my.read.table <- function(file) {
+  clean.lines <- sub("##.*", "", readLines(file))
+  clean.lines <- sub("#", "", clean.lines)
+  read.table(text = paste(clean.lines, collapse = "\n"), sep="\t", header = TRUE, stringsAsFactors = FALSE)
+}
+
+write.bed.intermediate <- function(inputFolder, str_n){
+  files <- list.files(inputFolder)
+  files <- files[grep("vcf$", files)]
+  df1 <- lapply(files, function(x) {
+    df <- my.read.table(paste0(inputFolder, "/", x))
+    df$SAMPLE <- colnames(df)[10]
+    colnames(df)[10] <- "IND"
+    return(df[!str_detect(df[,10], "^0"),])
+  })
+  df2 <- dplyr::bind_rows(df1)
+  flags <- str_split_fixed(do.call(rbind, df1)$IND, ":", n=7)
+  coords <- str_split_fixed(do.call(rbind, df1)$ID, "_", n=4)
+  
+  # write to a BED file formet
+  bed <- data.frame(chr = df2$CHROM)
+  bed$start <- df2$POS
+  bed$end <- as.integer(coords[,4])
+  
+  bed$name <- str_n
+  bed$sample <- df2$SAMPLE
+  
+  bed$cn <- as.integer(flags[,2])
+  bed$qs <- flags[,5]
+  bed$size <- bed$end - bed$start
+  
+  bed$copy_num <- as.integer(flags[,2])
+  bed$np <- flags[,3]
+  #write.table(bed, paste0(str_n, ".bed"),sep="\t") # don't do this anymore,
+  return(bed)
+}
+
+reformat <- function(df, c){
+  n <- nrow(df)
+  DEL <- "DEL"
+  DUP <- "DUP"
+  df$cn[df$chr=="X"] <- ifelse(df$cn[df$chr=="X"]  >= 2, DUP, DEL)
+  df$cn[df$chr=="Y"] <- ifelse(df$cn[df$chr=="Y"] >= 1, DUP, DEL)
+  df$cn[df$chr!="X" & df$chr!="Y"] <- ifelse(df$cn[df$chr!="X" & df$chr!="Y"] >=2, DUP, DEL)
+  df$name <- paste0(c, "_cnv_", 1:n) 
+  return(df)
+}
+
+
+# yes i know seq_along is better but I sometimes want to not start at 1
+for(current_ind in 12:(length(individuals))){
+  n_cores <- detectCores() - 1
+  cl <- makeCluster(n_cores)
+  
+  
+  INDIVIDUAL_TO_DOWNLOAD <- individuals[current_ind] 
+  PATH_TO_DOWNLOAD_TO <- paste0(wd, INDIVIDUAL_TO_DOWNLOAD)
+  if(dir.exists(PATH_TO_DOWNLOAD_TO) == FALSE){
+    dir.create(PATH_TO_DOWNLOAD_TO)
+  }
+  print(PATH_TO_DOWNLOAD_TO)
+  PATH_IN_GOOGLE_BUCKET <- stringr::str_replace_all(stringr::str_replace_all(entity$segments_vcfs[which(entity$entity.sample_set_id==INDIVIDUAL_TO_DOWNLOAD)], "\\[|\\]", ""), ",", " ")
+  
+  files <- stringr::str_split(PATH_IN_GOOGLE_BUCKET, " ")[[1]]
+  
+  clusterExport(cl=cl, varlist = c("PATH_IN_GOOGLE_BUCKET", "PATH_TO_DOWNLOAD_TO", "files"))
+  
+  parLapply(cl, files, function(x) system2('gsutil', paste0('cp ', x, ' ',PATH_TO_DOWNLOAD_TO)))
+  
+  system2("gunzip", " -k  PATH_TO_DOWNLOAD_TO/*gz")
+  
+  
+  bed1 <- write.bed.intermediate(PATH_TO_DOWNLOAD_TO, INDIVIDUAL_TO_DOWNLOAD)
+  
+  
+  ##re-formtat for svtk bedcluster
+  bed2<- reformat(bed1, INDIVIDUAL_TO_DOWNLOAD)
+  
+  input_bed <- paste0(PATH_TO_DOWNLOAD_TO, "/", INDIVIDUAL_TO_DOWNLOAD, ".bed")
+  write.table(bed2, input_bed, sep="\t", col.names = TRUE, quote = FALSE, row.names = FALSE)
+  all_bed_paths$bed_path[which(all_bed_paths$ind==INDIVIDUAL_TO_DOWNLOAD)] <- input_bed
+  
+  stopCluster(cl)
+}
+
+beep(3) 
+```
+
