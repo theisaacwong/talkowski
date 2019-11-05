@@ -55,44 +55,72 @@ public class NCDU_Parser {
 		output.write("file\tasize\tdsize\n");
 
 		HashMap<Integer, String> lineMap = new HashMap<Integer, String>();
-		HashMap<Long, Integer> sortMap = new HashMap<Long, Integer>();
+		HashMap<Long, ArrayList<Integer>> sortMap = new HashMap<Long, ArrayList<Integer>>();
 		int lineNumber = 1;
 
 		Pattern ap = Pattern.compile("(?<=asize\":)\\d+");
 		Pattern dp = Pattern.compile("(?<=dsize\":)\\d+");
 		Pattern np = Pattern.compile("(?<=name\":\").+?(?=\")");
+		int count = 0;
 
 		while (sc.hasNextLine()) {
 			try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
 
 			Matcher am = ap.matcher(line); 
 			Matcher dm = dp.matcher(line); 
-			Matcher nm = np.matcher(line); 
-			if(am.find()==false || dm.find()==false || nm.find()==false) {continue;}
+			Matcher nm = np.matcher(line);  nm.find();
+
+			if(line.contains("[")) {
+				filePaths.push(nm.group());
+				count = line.length() - line.replaceAll("]", "").length();
+				for(int i = 0; i < count; i++) {
+					if(filePaths.size() > 0)
+						filePaths.pop();
+				}
+				continue;
+			} 
+			
+			if(am.find()==false || dm.find()==false) {
+				count = line.length() - line.replaceAll("]", "").length();
+				for(int i = 0; i < count; i++) {
+					if(filePaths.size() > 0)
+						filePaths.pop();
+				}
+				continue;
+			}
 
 			String asize = am.group(0);
 			String dsize = dm.group(0);
 			String name  = nm.group(0);
-
-			String currPath = "";
-			if(line.contains("[")) {
-				filePaths.push(name);
-			} 
-
-			for(Object o : filePaths.toArray()){
-				currPath += o + "/";
+			
+			StringBuilder sb = new StringBuilder();
+			for (Object s : filePaths.toArray()) {
+			    sb.append(s);
+			    sb.append("/");
 			}
-			currPath += name + "\t" + asize + "\t" + dsize + "\n";
+			sb.append(name);
+			sb.append("\t");
+			sb.append(asize);
+			sb.append("\t");
+			sb.append(dsize);
+			sb.append("\n");
+			String currPath = sb.toString();
 			output.write(currPath);
+			
 
-			int count = line.length() - line.replace("]", "").length();
+			count = line.length() - line.replaceAll("]", "").length();
 			for(int i = 0; i < count; i++) {
-				if(filePaths.size() > 1)
+				if(filePaths.size() > 0)
 					filePaths.pop();
 			}
 
 			lineMap.put(lineNumber, currPath);
-			sortMap.put(Long.parseLong(dsize), lineNumber);
+			Long dSize = Long.parseLong(dsize);
+			if(sortMap.containsKey(dSize)) {
+				sortMap.get(dSize).add(lineNumber);
+			} else {
+				sortMap.put(dSize, new ArrayList<Integer>());
+			}
 			lineNumber++;
 		}
 		inputStream.close();
@@ -105,13 +133,16 @@ public class NCDU_Parser {
 		file = new File(OUTPUT_BASE + "_sorted.tsv");
 		output = new BufferedWriter(new FileWriter(file));
 
+		output.write("file\tasize\tdsize\n");
 		ArrayList<Long> sortIndex = new ArrayList<>(sortMap.keySet());
 		Collections.sort(sortIndex, Collections.reverseOrder());
 
 		System.out.println("done sorting, now writing");
 
 		for(Long si : sortIndex) {
-			output.write(lineMap.get(sortMap.get(si)) + "\n");
+			for(Integer ln : sortMap.get(si)) {
+				output.write(lineMap.get(ln));
+			}
 		}
 		output.close();
 
