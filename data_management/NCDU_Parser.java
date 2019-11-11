@@ -1,3 +1,4 @@
+package data_management;
 /**
  * Isaac Wong
  * November 5, 2019
@@ -26,6 +27,7 @@ import java.util.regex.Pattern;
 public class NCDU_Parser {
 
 	public static void main(String[] args) throws IOException {
+		
 		System.out.println(System.getProperty("java.version"));
 		if(args[0].equals("-h") || args[0].equals("--help")) {
 			System.out.println("java NCDU_Parser [ncdu_file] [output_file]");
@@ -34,6 +36,27 @@ public class NCDU_Parser {
 		}
 	}
 
+
+	/*
+	 * https://programming.guide/java/formatting-byte-size-to-human-readable-format.html
+	 * https://stackoverflow.com/questions/3758606/how-to-convert-byte-size-into-human-readable-format-in-java
+	 */
+	public static String humanReadableByteCount(long bytes) {
+	    if (bytes < 1024) return bytes + " B";
+	    int exp = (int) (Math.log(bytes) / 6.907755278982137);
+	    char pre = "KMGTPE".charAt(exp-1);
+	    return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
+	}
+	public static String humanReadableByteCount(String bytes_string) {
+		long bytes = Long.parseLong(bytes_string);
+	    if (bytes < 1024) return bytes + " B";
+	    int exp = (int) (Math.log(bytes) / 6.907755278982137);
+	    char pre = "KMGTPE".charAt(exp-1);
+	    return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
+	}
+	
+	
+	
 	public static void ncduParser(String INPUT_PATH, String OUTPUT_BASE) throws IOException {
 
 		BufferedWriter output = null;
@@ -50,9 +73,8 @@ public class NCDU_Parser {
 		sc.nextLine();
 
 		Stack<String> filePaths = new Stack<String>();
-		//filePaths.push("");
 
-		output.write("file\tasize\tdsize\n");
+		output.write("file\tasize\tdsize\thuman_readable\n");
 
 		HashMap<Integer, String> lineMap = new HashMap<Integer, String>();
 		HashMap<Long, ArrayList<Integer>> sortMap = new HashMap<Long, ArrayList<Integer>>();
@@ -103,6 +125,8 @@ public class NCDU_Parser {
 			sb.append(asize);
 			sb.append("\t");
 			sb.append(dsize);
+			sb.append("\t");
+			sb.append(humanReadableByteCount(asize));
 			sb.append("\n");
 			String currPath = sb.toString();
 			output.write(currPath);
@@ -133,7 +157,7 @@ public class NCDU_Parser {
 		file = new File(OUTPUT_BASE + "_sorted.tsv");
 		output = new BufferedWriter(new FileWriter(file));
 
-		output.write("file\tasize\tdsize\n");
+		output.write("file\tasize\tdsize\thuman_readable\n");
 		ArrayList<Long> sortIndex = new ArrayList<>(sortMap.keySet());
 		Collections.sort(sortIndex, Collections.reverseOrder());
 
