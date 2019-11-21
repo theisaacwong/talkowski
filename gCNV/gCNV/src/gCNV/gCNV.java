@@ -37,9 +37,6 @@ public class gCNV {
 	
 	public static void main(String[] args) throws IOException {
 		System.out.println("Java version " + System.getProperty("java.version"));
-		args = new String[]{"C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/full_merged_bed.bed", 
-				"C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_output_c.bed",
-				"C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_output_c_merged_testing.bed"};
 		
 		if(args.length == 1) {
 			System.out.println("usage: gCNV [svtk_input] [svtk_output] [output_file]");
