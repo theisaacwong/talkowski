@@ -49,7 +49,7 @@ public class svtk_bed_input {
 			try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
 			if(line.charAt(0) == '@' || line.charAt(0) == '#' ) {continue;}
 			String[] linee = line.split("\t");
-			if(linee.length != 11) {System.out.println("Error at line " + lineNumber + ", expected 11 columns, got " + linee.length); continue;}
+			if(linee.length != 12) {System.out.println("Error at line " + lineNumber + ", expected 12 columns, got " + linee.length); continue;}
 			this.df.add(new svtk_bed_input_row(
 					linee[0],
 					Integer.parseInt(linee[1]),
@@ -61,7 +61,8 @@ public class svtk_bed_input {
 					Integer.parseInt(linee[7]),
 					Integer.parseInt(linee[8]),
 					Integer.parseInt(linee[9]),
-					linee[10]
+					Integer.parseInt(linee[10]),
+					linee[11]		
 					));
 			lineNumber++;
 			

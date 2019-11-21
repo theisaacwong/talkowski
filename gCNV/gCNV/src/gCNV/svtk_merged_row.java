@@ -15,9 +15,10 @@ public class svtk_merged_row {
 	public int np; 			// 12
 	public int cn;			//13
 	public int qs; 			//14
+	public int qa; 			//15
 	
 	
-	public svtk_merged_row(String chr, int start, int end, String name, String svtype, String sample, String call_name, String vaf, String vac, String pre_rmsstd, String post_rmsstd, int np, int cn, int qs) {
+	public svtk_merged_row(String chr, int start, int end, String name, String svtype, String sample, String call_name, String vaf, String vac, String pre_rmsstd, String post_rmsstd, int np, int cn, int qs, int qa) {
 		this.chr = chr;
 		this.start = start;
 		this.end = end;
@@ -32,6 +33,7 @@ public class svtk_merged_row {
 		this.np = np;
 		this.cn = cn;
 		this.qs = qs;
+		this.qa = qa;
 	}
 	
 	public String toString() {
@@ -48,7 +50,8 @@ public class svtk_merged_row {
 				post_rmsstd + "\t" + 
 				np  + "\t" + 
 				cn + "\t" + 
-				qs;
+				qs + "\t" + 
+				qa;
 		
 		
 	}

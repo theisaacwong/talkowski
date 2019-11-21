@@ -30,6 +30,7 @@ public class svtk_merged {
 							row.post_rmsstd,
 							-1,
 							-1,
+							-1, 
 							-1
 							));		
 				}
@@ -48,6 +49,7 @@ public class svtk_merged {
 						row.post_rmsstd,
 						-1,
 						-1,
+						-1, 
 						-1
 						));				
 			}

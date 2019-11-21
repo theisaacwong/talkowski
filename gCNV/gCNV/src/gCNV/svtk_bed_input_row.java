@@ -11,7 +11,8 @@ public class svtk_bed_input_row {
 	public int size;		// 8
 	public int copy_num;	// 9
 	public int np;			// 10
-	public String group;	/// 11
+	public String group;	// 11
+	public int qa;			// 12
 	
 	public svtk_bed_input_row() {
 		
@@ -27,6 +28,7 @@ public class svtk_bed_input_row {
 			int size, 
 			int copy_num, 
 			int np, 
+			int qa,
 			String group) {
 		
 		this.chr = chr;
@@ -40,6 +42,7 @@ public class svtk_bed_input_row {
 		this.copy_num = copy_num;
 		this.np = np;
 		this.group = group;
+		this.qa = qa;
 	}
 	
 	

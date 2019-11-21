@@ -36,10 +36,10 @@ public class gCNV {
 	}
 	
 	public static void main(String[] args) throws IOException {
-		
-//		args = new String[]{"C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/full_merged_bed.bed", 
-//				"C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/full_merged_bed_svtk_output.bed",
-//				"C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/full_merged_svtk_java_out_temp.bed"};
+		System.out.println("Java version " + System.getProperty("java.version"));
+		args = new String[]{"C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/full_merged_bed.bed", 
+				"C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_output_c.bed",
+				"C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_output_c_merged_testing.bed"};
 		
 		if(args.length == 1) {
 			System.out.println("usage: gCNV [svtk_input] [svtk_output] [output_file]");
@@ -65,11 +65,13 @@ public class gCNV {
 		HashMap<String, Integer> m_qs = new HashMap<String, Integer>();
 		HashMap<String, Integer> m_np = new HashMap<String, Integer>();
 		HashMap<String, Integer> m_cn = new HashMap<String, Integer>();
+		HashMap<String, Integer> m_qa = new HashMap<String, Integer>();
 		
 		for(svtk_bed_input_row r : input.df) {
 			m_qs.put(r.name, r.qs);
 			m_np.put(r.name, r.np);
 			m_cn.put(r.name, r.copy_num);
+			m_qa.put(r.name, r.qa);
 		}
 
 		svtk_merged rval = new svtk_merged(output);
@@ -81,12 +83,13 @@ public class gCNV {
 			r.qs = m_qs.get(r.call_name);
 			r.np = m_np.get(r.call_name);
 			r.cn = m_cn.get(r.call_name);
+			r.qa = m_qa.get(r.call_name);
 		}	
 		
 		BufferedWriter output = null;
 		File file = new File(OUTPUT_PATH);
 		output = new BufferedWriter(new FileWriter(file));
-		String header = "chr\tstart\tend\tname\tsvtype\tsample\tcall_name\tvaf\tvac\tpre_rmsstd\tpost_rmsstd\tnp\tcn\tqs\n";
+		String header = "chr\tstart\tend\tname\tsvtype\tsample\tcall_name\tvaf\tvac\tpre_rmsstd\tpost_rmsstd\tnp\tcn\tqs\tqa\n";
 		output.write(header);
 		for(svtk_merged_row r : rval.df) {
 			output.write(r.toString() + "\n");
