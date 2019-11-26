@@ -94,15 +94,13 @@ public class DupCaller {
 		ArrayList<Long> sortIndex = new ArrayList<>(sizeToMd5.keySet());
 		Collections.sort(sortIndex, Collections.reverseOrder());
 		
-		System.out.println(toString(md5ToPath));
+		//System.out.println(toString(md5ToPath));
 		
-		System.out.println("sortIndex.toString() "+ sortIndex.toString());
+		//System.out.println("sortIndex.toString() "+ sortIndex.toString());
 		
 		for(Long l : sortIndex) {
-			String hSize = humanReadableByteCount(l);
-			System.out.println(l + " sizeToMd5.get(l).toString() " + sizeToMd5.get(l).toString());
-			for(String md5 : sizeToMd5.get(l)) {
-				System.out.println(md5 + " md5ToPath.get(md5).toString() " + md5ToPath.get(md5).toString());	
+			String hSize = humanReadableByteCount(l);			
+			for(String md5 : sizeToMd5.get(l)) {			
 				if(md5ToPath.get(md5).size() > 1) {
 					for(String filePath : md5ToPath.get(md5)) {
 						output.write(filePath + "\t" + hSize + "\t" + md5 + "\n");
