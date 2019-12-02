@@ -1,5 +1,19 @@
 package data_management;
 
+/**
+ * 
+ * @author Isaac Wong
+ * November 26, 2019
+ * Massachusetts General Hospital
+ * Center for Genomic Medicine
+ * Talkowski Lab
+ * 
+ * This is designed to read in a list of files, with a full file path, and then calculate md5sum on all files larger than some value
+ * This implementation assumes you have excessive memory available. 
+ * A slower but more memory efficient version is in development
+ *
+ */
+
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -18,21 +32,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
-/**
- * 
- * @author Isaac Wong
- * November 26, 2019
- * Massachusetts General Hospital
- * Center for Genomic Medicine
- * Talkowski Lab
- * 
- * This is designed to read in a list of files, with a full file path, and then calculate md5sum on all files larger than some value
- * This implementation assumes you have excessive memory available. 
- * A slower but more memory efficient version is in development
- *
- */
-
 
 public class DupCaller {
 
@@ -95,9 +94,9 @@ public class DupCaller {
 		ArrayList<Long> sortIndex = new ArrayList<>(sizeToMd5.keySet());
 		Collections.sort(sortIndex, Collections.reverseOrder());
 		
-		//System.out.println(toString(md5ToPath));
+		System.out.println(toString(md5ToPath));
 		
-		//System.out.println("sortIndex.toString() "+ sortIndex.toString());
+		System.out.println("sortIndex.toString() "+ sortIndex.toString());
 		
 		for(Long l : sortIndex) { // for each asize bucket, decreasing in size
 			String hSize = humanReadableByteCount(l);
@@ -137,7 +136,7 @@ public class DupCaller {
 
 					while(filePaths.size() > 0) {
 						String currentFile = filePaths.remove(0);
-						//System.out.println(Thread.currentThread().getId() + "\t" + currentFile);
+						System.out.println(Thread.currentThread().getId() + "\t" + currentFile);
 						
 						String md5val = "na";
 						try {
@@ -160,6 +159,8 @@ public class DupCaller {
 						if(!sizeToMd5.containsKey(asize))
 							sizeToMd5.put(asize, new HashSet<String>());
 						sizeToMd5.get(asize).add(md5val);
+						
+						System.out.println("md5val:\t" + currentFile + "\t" + md5val + "\t" + asize);
 					}
 				}
 			});
