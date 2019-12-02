@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -19,42 +20,62 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
+/**
+ * 
+ * @author Isaac Wong
+ * December 2, 2019
+ * Massachusetts General Hospital
+ * Center for Genomic Medicine
+ * Talkowski Lab
+ * 
+ * This tool is designed as a bridge between the various steps of gCNV
+ *
+ */
 public class gCNV_2_00 {
 	
 	
-	public DataFrame svtk_input;
-	public DataFrame svtk_output;
-	public DataFrame gCNV_output;
-	public String svtk_input_path;
-	public String svtk_output_path;
-	public String output_file_path;
+	public String[] initializationArgs;
+	public String date;
 	
-	public gCNV_2_00(String svtk_in, String svtk_out, String out_file_path) throws IOException {
-		svtk_input = new DataFrame(svtk_in, true, "\t", "#");
-		svtk_output = new DataFrame(svtk_out, true, "\t", "#");
-		gCNV_output = new DataFrame();
-		
-	}
-	
-	public gCNV_2_00() {
-		
+	public gCNV_2_00(String[] args) {
+		initializationArgs = args;
+		date = Calendar.getInstance().getTime().toString();
 	}
 	
 	
 	public static void main(String[] args) throws IOException, InterruptedException {
 		
-//		gCNV_2_00 gCNV = new gCNV_2_00(args[0], args[1], args[2]);
-//		gCNV.match();
-//		gCNV.writeFile();
+		gCNV_2_00 g = new gCNV_2_00(args);
+		System.out.println(g.toString());
+		if(args[0].contains("-help") || args[0].contains("-h")) {
+			System.out.println("-getBarcodeCounts [entityPath] [working-directory]");
+			System.out.println("-getCountsMatrix [sourceFolder] [working-OUTPUT_PATH]");
+			System.out.println("-getCountsMatrixParallel [sourceFolder] [working-OUTPUT_PATH]");
+			System.out.println("-convertVCFsToBEDFormat [working-diectory] [output-path]");
+			System.out.println("-svtkMatch [svtk_input] [svtk_output] [output_path]");
+		} else if(args[0].equals("-getBarcodeCounts")) {
+			g.getBarcodeCounts(args[1], args[2]);
+		} else if(args[0].equals("-getCountsMatrix")) {
+			g.getCountsMatrix(args[1], args[2]);
+		} else if(args[0].equals("-getCountsMatrixParallel")) {
+			g.getCountsMatrixParallel(args[1], args[2]);
+		} else if(args[0].equals("-convertVCFsToBEDFormat")) {
+			g.convertVCFsToBEDFormat(args[1], args[2]);
+		} else if(args[0].equals("-svtkMatch")) {
+			g.svtkMatch(args[1], args[2], args[3]);
+		}
 		
-		gCNV_2_00 g = new gCNV_2_00();
 		//g.getBarcodeCounts("C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_11_12/sample_set_entity.tsv", "C:/Users/iwong/Documents/temp/");
 		//g.getCountsMatrix("C:/Users/iwong/Documents/temp/", "C:/Users/iwong/Documents/temp/temp_count_mat.tsv");
 		//g.getCountsMatrixParallel("C:/Users/iwong/Documents/temp/", "C:/Users/iwong/Documents/temp/temp_count_mat.tsv");
 //		g.convertVCFsToBEDFormat("C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/sample_set_entity.tsv", "C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/", "svtk_input.bed");
 //		g.svtk(svtk_input, svtk_output);
-		g.svtkMatch("C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_input_java.bed", "C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_output_c.bed", "C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_match_c_testing.tsv");
+//		g.svtkMatch("C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_input_java.bed", "C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_output_java_testing.bed", "C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_match_testing.tsv");
 		
+	}
+	
+	public String toString() {
+		return String.join(" ", initializationArgs) + "\n" + date;
 	}
 	
 	
@@ -114,13 +135,13 @@ public class gCNV_2_00 {
 		ArrayList<String> QSS_newField = new ArrayList<>();
 		
 		for(int i = 0; i < svtkOutput.nrow(); i++){
-			CN_newField.add(CN_map.get(svtkOutput.get("name", i)));
-			GT_newField.add(GT_map.get(svtkOutput.get("name", i)));
-			NP_newField.add(NP_map.get(svtkOutput.get("name", i)));
-			QA_newField.add(QA_map.get(svtkOutput.get("name", i)));
-			QS_newField.add(QS_map.get(svtkOutput.get("name", i)));
-			QSE_newField.add(QSE_map.get(svtkOutput.get("name", i)));
-			QSS_newField.add(QSS_map.get(svtkOutput.get("name", i)));
+			CN_newField.add(CN_map.get(svtkOutput.get("call_name", i)));
+			GT_newField.add(GT_map.get(svtkOutput.get("call_name", i)));
+			NP_newField.add(NP_map.get(svtkOutput.get("call_name", i)));
+			QA_newField.add(QA_map.get(svtkOutput.get("call_name", i)));
+			QS_newField.add(QS_map.get(svtkOutput.get("call_name", i)));
+			QSE_newField.add(QSE_map.get(svtkOutput.get("call_name", i)));
+			QSS_newField.add(QSS_map.get(svtkOutput.get("call_name", i)));
 		}
 		
 		ArrayList<String> columnNames = new ArrayList<>();
@@ -166,7 +187,7 @@ public class gCNV_2_00 {
 	 * @param wd
 	 * @throws IOException 
 	 */
-	public void convertVCFsToBEDFormat(String entityPath, String wd, String output) throws IOException {
+	public void convertVCFsToBEDFormat(String wd, String output) throws IOException {
 //		DataFrame sampleSetMembership = new DataFrame(membershipPath, true, "\\t", "@");	
 //		DataFrame sampleSetEntity = new DataFrame(entityPath, true, "\\t", "@");
 		
@@ -397,6 +418,7 @@ public class gCNV_2_00 {
 	}
 	
 	/**
+	 * @deprecated - please use parallel version
 	 * @param sourceFolder
 	 * @param OUTPUT_PATH
 	 * @throws IOException
@@ -633,32 +655,6 @@ public class gCNV_2_00 {
 		}
 	}
 	
-	
-	
-	public void match() {
-		HashMap<String, String> qs_map = new HashMap<String, String>();
-		HashMap<String, String> np_map = new HashMap<String, String>();
-		HashMap<String, String> cn_map = new HashMap<String, String>();
-		
-		for(int i = 0; i < svtk_input.size(); i++) {
-			qs_map.put(svtk_input.get("name", i), svtk_input.get("qs", i));
-			np_map.put(svtk_input.get("name", i), svtk_input.get("np", i));
-			cn_map.put(svtk_input.get("name", i), svtk_input.get("cn", i));
-		}
-		
-		
-		
-		for(int i = 0; i < svtk_output.size(); i++) {
-			
-		}
-		
-		
-	}
-	
-	
-	public void writeFile() {
-		
-	}
 	
 	
 	
