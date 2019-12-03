@@ -12,6 +12,11 @@ package data_management;
  * This implementation assumes you have excessive memory available. 
  * A slower but more memory efficient version is in development
  *
+ * Contact Information
+ * website: https://talkowski.mgh.harvard.edu/
+ * email: iwong@broadinstitute.org
+ * github: https://github.com/theisaacwong/
+ *
  */
 
 import java.io.BufferedReader;
@@ -51,7 +56,7 @@ public class DupCaller {
 	}
 	
 	public static void main(String[] args) throws IOException, InterruptedException {
-		
+		//args = new String[] {"C:/Users/iwong/Documents/ncdu/CMG_sizes_sorted_duplicates.tsv", "C:/Users/iwong/Documents/ncdu/CMG_dups.txt"};
 		System.out.println("Duplicate File Caller version 0.14.8");
 		System.out.println("Java version: " + System.getProperty("java.version"));
 		System.out.println("N_THREADS: " + N_THREADS);
@@ -160,7 +165,7 @@ public class DupCaller {
 							sizeToMd5.put(asize, new HashSet<String>());
 						sizeToMd5.get(asize).add(md5val);
 						
-						System.out.println("md5val:\t" + currentFile + "\t" + md5val + "\t" + asize);
+						System.out.println("md5val:\t" + currentFile + "\t" + md5val + "\t" + humanReadableByteCount(asize) + "\t" + asize);
 					}
 				}
 			});
