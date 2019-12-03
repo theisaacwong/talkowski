@@ -1,363 +1,45 @@
 ---
-title: "CMG_10_29_19"
+title: "gCNV_Pipeline"
 output: html_document
 ---
-
-This code is for reading all the different files from CMG and consolidating them into one set of merged files
-This is an update to CMG_Broad.Rmd to include the new data, and to redo everything
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-load the libraries
 ```{r}
 library("stringr")
-library("dplyr")
-library("beepr")
-library("parallel")
-library("plyr")
-library("stringr")
-library("rgl")
-library("StatMeasures")
-
-srt <- function(x){
-  sort(table(x), decreasing = TRUE)
-}
 ```
 
-
-after manually downloading all the files from the different workspaces, read them to a dataframe
+To start, download the entity file from firecloud 
 ```{r}
-# get all file names
-wd <- "C:/Users/iwong/Documents/MGH/CMG_10_29_19"
-files <- list.files(wd)
-samples <- unique(do.call(c, str_extract_all(files, "[^participant_sample_set].*[^\\.tsvzip]")))
-participant_files <- do.call(c, str_extract_all(files, "participant_.*"))
-sample_files <- do.call(c, str_extract_all(files, "sample_.*tsv"))
-entity_files <- paste0("sample_set_", samples, "/sample_set_entity.tsv")
-membership_files <- paste0("sample_set_", samples, "/sample_set_membership.tsv")
+wd <- "C:/Users/iwong/Documents/MGH/gCNV_full_pipe/"
 
-# read all particiant files
-participant_list_of_dfs <- lapply(paste0(wd, "/", participant_files), function(x) read.table(x, header = T, stringsAsFactors = F, sep="\t", quote="", fill=F))
-for(i in 1:(length(participant_list_of_dfs))){  participant_list_of_dfs[[i]]$terra_source <- participant_files[i]   }
-participants_df <- rbind.fill(participant_list_of_dfs)
-# sanity check , should be true
-colSums(do.call(rbind, lapply(participant_list_of_dfs, dim)))[[1]] == nrow(participants_df)
-
-# read all sample_ files
-sample_list_of_dfs <- lapply(paste0(wd, "/", sample_files), function(x) read.table(x, header = T, stringsAsFactors = F, sep="\t", quote="", fill=F))
-for(i in 1:(length(sample_list_of_dfs))){  sample_list_of_dfs[[i]]$terra_source <- sample_files[i]   }
-samples_df <- rbind.fill(sample_list_of_dfs)
-# sanity check , should be true
-colSums(do.call(rbind, lapply(sample_list_of_dfs, dim)))[[1]] == nrow(samples_df)
-
-# read all sample_set_identity files
-entity_list_of_dfs <- lapply(paste0(wd, "/", entity_files), function(x) if(file.exists(x)) {
-  temp_df <- read.table(x, header = T, stringsAsFactors = F, sep="\t", quote="", fill=F)
-  temp_df$terra_source <- str_extract(x, "sample_set_.*")
-  return(temp_df)})
-entity_df <- rbind.fill(entity_list_of_dfs)
-
-# read all sample_membership files
-membership_list_of_dfs <- lapply(paste0(wd, "/", membership_files), function(x) if(file.exists(x)) {
-  temp_df <- read.table(x, header = T, stringsAsFactors = F, sep="\t", quote="", fill=F)
-  temp_df$terra_source <- str_extract(x, "sample_set_.*")
-  return(temp_df)})
-membership_df <- rbind.fill(membership_list_of_dfs)
-# sanity check , should be true
-colSums(do.call(rbind, lapply(membership_list_of_dfs, dim)))[[1]] == nrow(membership_df)
-
-# write all files to table
-write.table(participants_df, paste0(wd, "/merged_files/participant.tsv"), sep="\t", col.names = T, row.names = F, quote=F)
-write.table(samples_df, paste0(wd, "/merged_files/samples_df.tsv"), sep="\t", col.names = T, row.names = F, quote=F)
-write.table(entity_df, paste0(wd, "/merged_files/sample_set_identity.tsv"), sep="\t", col.names = T, row.names = F, quote=F)
-write.table(membership_df, paste0(wd, "/merged_files/sample_set_membership.tsv"), sep="\t", col.names = T, row.names = F, quote=F)
+system2("java", paste0("-jar ", wd, "gCNV_helper.jar --help"))
+system2("java", paste0("-jar ", wd, "gCNV_helper.jar -getBarcodeCounts ", wd, "sample_set_entity.tsv ", wd))
+system2("java", paste0("-jar ", wd, "gCNV_helper.jar -getCountsMatrixParallel  ", wd, " ", wd, "counts_matrix.tsv"))
 ```
 
-# load from table
 ```{r}
-participants <- read.table(paste0(wd, "/merged_files/participant.tsv"), sep="\t", header = T, stringsAsFactors = F, quote="", fill=F)
-samples <- read.table(paste0(wd, "/merged_files/samples_df.tsv"), sep="\t", header = T, stringsAsFactors = F, quote="", fill=F)
-entity <- read.table(paste0(wd, "/merged_files/sample_set_identity.tsv"), sep="\t", header = T, stringsAsFactors = F, quote="", fill=F)
-membership <- read.table(paste0(wd, "/merged_files/sample_set_membership.tsv"), sep="\t", header = T, stringsAsFactors = F, quote="", fill=F)
-```
-
-# subset crams, separating out the crams exomes only and the bam exomes only
-```{r}
-# some samples of newly added data appear to be updates to pre-existing samples
-duplicates_table <- sort(table(samples$entity.sample_id), decreasing = TRUE)
-samples$year <- str_extract(samples$release_date, "^....")
-samples$month <- str_replace_all(str_extract(samples$release_date, "/../"), "/", "")
-samples$day <- str_extract(samples$release_date, "..$")
-samples_sorted <- samples[order(samples$entity.sample_id, samples$year, samples$month, samples$day, decreasing = TRUE),]
-names_to_trim <- names(which(duplicates_table>1))
-
-trimmed <- do.call(rbind,lapply(names_to_trim, function(x) samples_sorted[samples_sorted$entity.sample_id==x,][1,]))
-
-samples_removed_both_duplicates <- samples[!samples$entity.sample_id %in% names_to_trim,]
-
-samples_no_duplicates <- rbind(trimmed , samples_removed_both_duplicates)
-samples <- samples_no_duplicates
-
-cram_only_set <- grepl(".cram", samples$cram_path)
-cram_part_set <- grepl(".cram", samples$cram_or_bam_path)
-bothTrues <- cram_only_set & cram_part_set
-cram_part_set[bothTrues] <- FALSE
-
-
-#these should have the same dimensions
-samples_exomes <- samples[grepl("xome", samples$entity.sample_id),]
-samples_no_wgs <- samples[!grepl("(WGS)|(wgs)", samples$entity.sample_id),]
-
-cram_only_set_exomes <- grepl(".cram", samples_exomes$cram_path)
-cram_part_set_exomes <- grepl(".cram", samples_exomes$cram_or_bam_path)
-bothTrues_exomes <- cram_only_set_exomes & cram_part_set_exomes
-cram_part_set_exomes[bothTrues_exomes] <- FALSE
-
-samples_crams_only <- samples_exomes[cram_part_set_exomes | cram_only_set_exomes,]
-samples_crams_only$scan_path <- ifelse(grepl("cram", samples_crams_only$cram_path), samples_crams_only$cram_path, samples_crams_only$cram_or_bam_path)
-samples_crams_only$index_path <- ifelse(grepl("crai", samples_crams_only$crai_path), samples_crams_only$crai_path, samples_crams_only$crai_or_bai_path)
-samples_exomes_crams <- data.frame(entity_sample=samples_crams_only$entity.sample_id, scan=samples_crams_only$scan_path, index=samples_crams_only$index_path)
-write.table(samples_exomes_crams, paste0(wd, "/merged_files/samples_exomes_crams_only_.tsv"), sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
-
-bam_part_set_exomes <- grepl(".bam", samples_exomes$cram_or_bam_path)
-samples_exomes_bams <- data.frame(entity_sample=samples_exomes$entity.sample_id[bam_part_set_exomes], scan=samples_exomes$cram_or_bam_path[bam_part_set_exomes], index=samples_exomes$crai_or_bai_path[bam_part_set_exomes])
-write.table(samples_exomes_bams, paste0(wd, "/merged_files/samples_exomes_bams_only_.tsv"), sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
-
-
-bam_part_set <- grepl(".bam", samples$cram_or_bam_path)
-
-cram_only_df <- data.frame(mem = "cram_only_", participant = samples$entity.sample_id[cram_only_set])
-group_membership <- sample(1:4, nrow(cram_only_df), replace=T)
-cram_only_df$mem <- paste0(cram_only_df$mem, group_membership)
-
-cram_part_df <- data.frame(mem = "cram_part", participant = samples$entity.sample_id[cram_part_set])
-bam_part_df  <- data.frame(mem = "bam_part",  participant = samples$entity.sample_id[bam_part_set])
-
-mem_df <- rbind(cram_only_df, cram_part_df, bam_part_df)
-colnames(mem_df) <- c("membership:participant_set_id", "participant")
-
-write.table(mem_df, paste0(wd, "/merged_files/membership.tsv"),col.names = T, row.names = F, quote=F, sep="\t")
-write.table(samples, paste0(wd, "/merged_files/samples_good.tsv"), sep="\t", col.names = T, row.names = F, quote=F)
-```
-
-
-# temp code
-```{r}
-samples <- read.table(paste0(wd, "/merged_files/samples_good.tsv"), sep="\t", header = TRUE, stringsAsFactors = FALSE)
-wgs_samples <- samples[grepl("WGS", samples$entity.sample_id),]
-membership_labels <- read.table("C:/Users/iwong/Documents/MGH/CMG_10_29_19/sample_set_2019_10_30_crams_and_bams_labels/sample_set_membership.tsv", sep="\t", header=TRUE, stringsAsFactors = FALSE)
-
-cram_4 <- membership_labels[membership_labels$membership.sample_set_id=="cram_4",]
-wgs_passed <- cram_4$sample[cram_4$sample %in% wgs_samples$entity.sample_id]
-write.table(wgs_passed, "C:/Users/iwong/Documents/MGH/CMG_10_29_19/sample_set_2019_10_30_crams_and_bams_labels/cram_4_wgs_passed_cc.tsv", sep="\t", row.names = FALSE, col.names = FALSE, quote=FALSE)
-
-barcodes <- System2("gsutil", "ls gs://fc-c7df95ca-b767-4ef4-a9b0-121c6fb4be06/f50f4bd0-27a6-439e-a642-2b5dc2c30101/CC_Crams/0100b23a-0ccc-4ec9-acb1-05154039bd9c/call-CollectCountsCram/*/*.barcode.counts.tsv")
-```
-
-upload the samples and membership file to terra, 
-
-now do the counting stuff
-
-
-#Vars
-```{r}
-PARTIIPANT_ENTITY_SET <- "C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_10_30/sample_set_entity.tsv"
-INDIVIDUAL_TO_DOWNLOAD <- "" 
-PATH_TO_DOWNLOAD_TO <- paste0("C:/Users/iwong/Documents/MGH/CMG/participant_set/", INDIVIDUAL_TO_DOWNLOAD)
-```
-
-
-Use this to manally download files
-gsutil ls gs://fc-c7df95ca-b767-4ef4-a9b0-121c6fb4be06/7ecf9e5c-b824-4f9b-a47f-7aa3ce6998db/CC_Crams/86043ad1-9ce6-4cbd-b9bc-538e0d22a40d/call-CollectCountsCram/*/*tsv > crams_6.tsv
-grep "barcode.counts"  crams_6.tsv > crams_6_barcode_counts.tsv
-cat crams_8_barcode_counts.tsv | gsutil -m cp -I cram_8/
-
-gsutil ls gs://fc-c7df95ca-b767-4ef4-a9b0-121c6fb4be06/d1b030e8-b569-43f9-ba65-8bab7c9a00de/CC_Bams/a9d263be-e2d6-4652-9ab2-62c0f534cf0f/call-CollectCountsBam/*/*barcode.counts.tsv > bams_barcode_counts.tsv
-gsutil ls gs://fc-c7df95ca-b767-4ef4-a9b0-121c6fb4be06/abbb25cd-84e4-4344-a499-922a1dc4aa3b/CC_Crams/0ebdfc6e-b71f-4b31-b6b5-86947ca10ea8/call-CollectCountsCram/*/*barcode.counts.tsv > crams_4_barcode_counts.tsv
-gsutil ls gs://fc-c7df95ca-b767-4ef4-a9b0-121c6fb4be06/1b287df0-b86e-460d-b588-56d3edefa428/CC_Crams/805c039f-0041-4878-b63f-7ebb1ac437a0/call-CollectCountsCram/*/*barcode.counts.tsv > crams_5_barcode_counts.tsv
-gsutil ls gs://fc-c7df95ca-b767-4ef4-a9b0-121c6fb4be06/1b287df0-b86e-460d-b588-56d3edefa428/CC_Crams/805c039f-0041-4878-b63f-7ebb1ac437a0/call-CollectCountsCram
-gsutil ls gs://fc-c7df95ca-b767-4ef4-a9b0-121c6fb4be06/d57c0489-b078-4145-918e-a38cfd79eb54/CC_Crams/b8d65c25-b36a-4484-af26-b377f832d91f/call-CollectCountsCram/*/*barcode.counts.tsv > crams_1_barcode_counts.tsv
-gsutil ls gs://fc-c7df95ca-b767-4ef4-a9b0-121c6fb4be06/6f982e9a-5b32-430d-bd1b-35d0d470071f/CC_Crams/ec8f75f7-f943-4393-bace-5c62f59be29f/call-CollectCountsCram/*/*barcode.counts.tsv > crams_3_barcode_counts.tsv
-gsutil ls gs://fc-c7df95ca-b767-4ef4-a9b0-121c6fb4be06/eabee0ce-4312-43c3-ba6b-be69ee3be245/CC_Crams/d8359959-6b50-4d0f-b843-a93899c427bf/call-CollectCountsCram/*/*barcode.counts.tsv > crams_2_barcode_counts.tsv
-gsutil ls gs://fc-c7df95ca-b767-4ef4-a9b0-121c6fb4be06/377bf30e-c1fe-42a7-abfc-64777cd7702b/CC_Crams/281c17db-b209-40ff-937d-5838a322eec2/call-CollectCountsCram/*/*barcode.counts.tsv > crams_9_barcode_counts.tsv
-
-
-
-#Read the manifest file, download files
-```{r}
-wd <- "C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_10_30/"
-entity <- read.table(PARTIIPANT_ENTITY_SET, sep="\t", header=TRUE, stringsAsFactors = FALSE)
-for(i in 1:nrow(entity)){
-  INDIVIDUAL_TO_DOWNLOAD <- entity$entity.sample_set_id[i] 
-  PATH_TO_DOWNLOAD_TO <- paste0("C:/Users/iwong/Documents/MGH/CMG/participant_set/", INDIVIDUAL_TO_DOWNLOAD)
-  PATH_IN_GOOGLE_BUCKET <- stringr::str_replace_all(stringr::str_replace_all(entity$output_counts_barcode[which(entity$entity.sample_set_id==INDIVIDUAL_TO_DOWNLOAD)], "\\[|\\]", ""), ",", " ")
-  
-  
-  
-  files <- stringr::str_split(PATH_IN_GOOGLE_BUCKET, " ")[[1]]
-  
-  write.table(files, paste0(wd, "files_to_download.tmp"), sep="\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
-  
-  PATH_TO_DOWNLOAD_TO <- paste0(wd, "/", INDIVIDUAL_TO_DOWNLOAD, "/")
-  dir.create(PATH_TO_DOWNLOAD_TO)
-  
-  system(paste0("bash -c 'cat ", paste0(str_replace(wd, "C:", "/mnt/c"), "files_to_download.tmp"), " | gsutil -m cp -I ", str_replace(PATH_TO_DOWNLOAD_TO, "C:", "/mnt/c"),"'"))
-  
-}
-```
-
-
-Get a list of all the names of file collisions
-```{r}
-temp4 <- vector("list", length=10)
-for(i in 1:10){
-  temp1 <- str_replace_all(entity$output_sample_id[i], "\\[|\\]", "")
-  temp2 <- str_split(temp1, ",")[[1]]
-  temp4[[i]] <- temp2
-  temp3 <- sort(table(temp2), decreasing = TRUE)
-  print(head(temp3))
-}
-temp5 <- do.call(c, temp4)
-temp6 <- sort(table(temp5), decreasing = TRUE)
-```
-
-
-
-read in the sample_set_membership file, add a field for gs_bucket barcode_counts path, match the right sample to the right path
-```{r}
-sample_set_membership <- read.table("C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_10_30/sample_set_2019_10_30/sample_set_membership.tsv", sep="\t", header = TRUE, stringsAsFactors = FALSE)
-subsets <- unique(sample_set_membership$membership.sample_set_id)
-gs_bcs <- read.table("C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_10_30/crams_1_barcode_counts.tsv", sep="\t", stringsAsFactors = FALSE, header=FALSE)
-colnames(gs_bcs) <- c("gs_path")
-gs_bcs$file_name <- basename(gs_bcs$gs_path)
-gs_bcs$shard <- as.numeric(str_extract(gs_bcs$gs_path, "(?<=shard-).*?(?=/)")) # extract the shard number, as an integer
-gs_bcs <- gs_bcs[order(gs_bcs$shard),]
-
-ssm_subset_with_wgs <- sample_set_membership[sample_set_membership$membership.sample_set_id=="cram_1",]
-ssm_subset <- ssm_subset_with_wgs[!grepl("(wgs)|(WGS)", ssm_subset_with_wgs$sample),]
-ssm_subset <- ssm_subset[order(ssm_subset$sample),]
-
-matching_gs_buckets <- vector("list", length=nrow(ssm_subset))
-for(i in seq_along(matching_gs_buckets)){
-  #matching_gs_buckets[[i]] <- gs_bcs$gs_path[gs_bcs$file_name %in% ssm_subset$sample[i]]
-  
-  current_sample <- str_extract(gs_bcs$file_name[i], ".*?(?=.bar)")
-  
-  matching_gs_buckets[[i]] <- gs_bcs$gs_path[grepl(current_sample, gs_bcs$file_name)]
-}
-
-```
-
-
-
-```{r}
-sample_set_membership_with_wgs <- read.table("C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_10_30/sample_set_2019_10_30/sample_set_membership.tsv", sep="\t", header = TRUE, stringsAsFactors = FALSE)
-ssm <- sample_set_membership_with_wgs[!grepl("(wgs)|(WGS)", sample_set_membership_with_wgs$sample),]
-
-all_barcode_counts <- read.table("C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_10_30/crams_all_barcode_counts.tsv", sep="\t", stringsAsFactors = FALSE, header=FALSE)
-
-
-
-
-```
-
-
-
-#Vars
-```{r}
-PARTIIPANT_ENTITY_SET <- "C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_11_1/sample_set_2019_11_1/sample_set_entity.tsv"
-INDIVIDUAL_TO_DOWNLOAD <- "" 
-PATH_TO_DOWNLOAD_TO <- paste0("C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_11_1/", INDIVIDUAL_TO_DOWNLOAD)
-```
-
-#Read the manifest file, download files
-```{r}
-wd <- "C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_11_1/"
-entity <- read.table(PARTIIPANT_ENTITY_SET, sep="\t", header=TRUE, stringsAsFactors = FALSE)
-for(i in 1:nrow(entity)){
-  INDIVIDUAL_TO_DOWNLOAD <- entity$entity.sample_set_id[i] 
-  PATH_TO_DOWNLOAD_TO <- paste0("C:/Users/iwong/Documents/MGH/CMG/participant_set/", INDIVIDUAL_TO_DOWNLOAD)
-  PATH_IN_GOOGLE_BUCKET <- stringr::str_replace_all(stringr::str_replace_all(entity$output_counts_barcode[which(entity$entity.sample_set_id==INDIVIDUAL_TO_DOWNLOAD)], "\\[|\\]", ""), ",", " ")
-  
-  
-  
-  files <- stringr::str_split(PATH_IN_GOOGLE_BUCKET, " ")[[1]]
-  
-  write.table(files, paste0(wd, "files_to_download.tmp"), sep="\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
-  
-  PATH_TO_DOWNLOAD_TO <- paste0(wd, "/", INDIVIDUAL_TO_DOWNLOAD, "/")
-  dir.create(PATH_TO_DOWNLOAD_TO)
-  
-  system(paste0("bash -c 'cat ", paste0(str_replace(wd, "C:", "/mnt/c"), "files_to_download.tmp"), " | gsutil -m cp -I ", str_replace(PATH_TO_DOWNLOAD_TO, "C:", "/mnt/c"),"'"))
-  
-}
-```
-
-
-
-# do the pca on the crams
-```{r}
-wd <- "C:/Users/iwong/Documents/MGH/CMG/participant_set/all"
-wd <- "C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_11_1/all/"
-
-files <- list.files(wd)
-
-bams <-list.files("C:/Users/iwong/Documents/MGH/CMG/participant_set/bam")
-files <- files[!(files %in% bams)]
-
-
-
-myfiles <- lapply(files, function(x) {
-	df <- read.table(paste(wd,x,sep="/"), comment.char = "@", sep="\t", stringsAsFactors=FALSE, header = TRUE);
-	df$id <- str_replace_all(x, ".counts.tsv", "");
-	return(df) 
-	})
-
-ids <- str_replace_all(files, ".counts.tsv","")
-
-df <- do.call(rbind, myfiles)
-df$CONTIG <- str_replace_all(df$CONTIG, "chr", "")
-df$CONTIG[df$CONTIG=="X"] <- 23
-df$CONTIG[df$CONTIG=="Y"] <- 24
-df$CONTIG <- as.numeric(df$CONTIG)
-
-write.table(df, "C:/Users/iwong/Documents/MGH/CMG/participant_set/crams_only.tsv", sep="\t", row.names = T, col.names = T, quote=F)
-df <- read.table("C:/Users/iwong/Documents/MGH/CMG/participant_set/crams_only.tsv", sep="\t", header=T, stringsAsFactors = F)
-
-mydata <- matrix(df$COUNT, ncol=length(files), byrow=FALSE)
-colnames(mydata) <- str_replace(files, ".counts.tsv", "")
-row.names(mydata) <- paste0(myfiles[[1]]$CONTIG, "_", myfiles[[1]]$START, "_", myfiles[[1]]$END)
-
-mydataNormalized <- t(t(mydata)/colSums(mydata))
-
-
-
-indexes_to_remove <- rep(FALSE, nrow(mydata))
-rown <- rownames(mydata)
+counts_df <- read.table(paste0(wd, "counts_matrix.tsv"), sep="\t", stringsAsFactors = FALSE, header=TRUE, fill=TRUE)
+
+counts_matrix <- t(as.matrix(counts_df))
+indexes_to_remove <- rep(FALSE, nrow(counts_matrix))
+rown <- rownames(counts_matrix)
 chr <- do.call(rbind, str_split(rown, "_"))[,1]
-start <- as.integer( do.call(rbind, str_split(rown, "_"))[,2])
-end <- as.integer( do.call(rbind, str_split(rown, "_"))[,3])
 bool_y <- chr == "chrY"
 bool_x <- chr == "chrX"
 indexes_to_remove[bool_y | bool_x] <- TRUE
-mydata_filtered <- mydata[!indexes_to_remove,]
-mydataNormalized <- t(t(mydata)/colSums(mydata_filtered))
+mydata_filtered <- counts_matrix[!indexes_to_remove,]
+mydataNormalized <- t(t(mydata_filtered)/colSums(mydata_filtered))
 
-
-
-pca <- prcomp(t(mydataNormalized), rank = 5)
+pca <- prcomp(t(mydataNormalized), rank = 7)
 plot3d(pca$x[,1:3])
-
-write.table(pca$x, "C:/Users/iwong/Documents/MGH/CMG/pca_no_sex.tsv", row.names = T, col.names = T, quote=F, sep="\t")
-x <- read.table("C:/Users/iwong/Documents/MGH/CMG/pca_no_sex.tsv", row.names = 1, header=T, sep="\t")
+save(pca, file=paste0(wd, "pca.rda"))
+x <- pca$x
+save(x, file=paste0(wd, "x.rda"))
 ```
 
-```{r}
-outliers <- unique(c(outliers(pca$x[,1])$idxOutliers, outliers(pca$x[,2])$idxOutliers, outliers(pca$x[,3])$idxOutliers))
-plot3d(pca$x[-outliers,1:3])
-```
 
 #code for automating clustering, 
 #DB : smaller is better
@@ -366,7 +48,10 @@ plot3d(pca$x[-outliers,1:3])
 ```{r}
 library("clusterSim")
 library("cluster")
+library("rgl")
 library("clValid")
+wd <- "C:/Users/iwong/Documents/MGH/gCNV_full_pipe/"
+load(paste0(wd, "x.rda"))
 
 pca_loadings <- x
 n_clusters <- 25
@@ -384,7 +69,7 @@ for(i in 1:nrow(results)){
   hclust <- hclust(dist_mat, method=results$agglomeration[i]) 
   cut_avg <- cutree(hclust, k=n_clusters)
   
-  results$db[i] <- index.DB(pca_loadings[1:3], cut_avg, centrotypes="centroids", p=3)$DB
+  results$db[i] <- index.DB(pca_loadings[,1:3], cut_avg, centrotypes="centroids", p=3)$DB
   results$silhouette[i] <- mean(silhouette(cut_avg, dist_mat)[,3])
   results$dunn[i] <- dunn(dist_mat, cut_avg)
 }
@@ -398,50 +83,13 @@ rval$sum <- rval$db + rval$dunn + rval$silhouette
 rval <- rval[order(rval$sum),]
 
 n <- n_clusters
-dist_mat <- dist(x[,1:3], method="minkowski") 
-hclust <- hclust(dist_mat, method="ward.D2") 
+dist_mat <- dist(x[,1:3], method=rval$distance[1]) 
+hclust <- hclust(dist_mat, method=rval$agglomeration[1]) 
 cut_avg <- cutree(hclust, k=n)
 cols <- rainbow(n)[sample(1:n, n)]
 plot3d(x[,1:3], col=cols[cut_avg])
-```
 
-#3d rotate
-```{r}
-open3d()
-plot3d(x[,1:3], col="grey")
-if (!rgl.useNULL())
-  play3d(spin3d(axis = c(1, 1, 1), rpm = 4), duration = 15, )
-  movie3d( spin3d(rpm=3), duration=20,dir="C:/test/movie", clean=FALSE )
-```
-
-#3d rotate
-```{r}
-open3d()
-plot3d(x[,1:3], col="grey")
-if (!rgl.useNULL())
-  play3d(spin3d(axis = c(1, 1, 1), rpm = 1), duration = 120)
-```
-
-
-#save dendrogram as pdf
-```{r}
-pdf(paste0(wd, "/rplot.pdf") )
-plot(dend1, main = "dist: Maximum; method: complete; n=19")
-#fviz_eig(pca)
-dev.off()
-
-library(factoextra)
-fviz_eig(pca)
-```
-
-
-
-
-```{r}
 set.seed(123)
-cut_avg <- cutree(hclust, k=n)
-cut_avg[which(cut_avg==13)] <- 12
-cut_avg[which(cut_avg==20)] <- 13
 clusters <- paste0("cluster_", LETTERS[cut_avg])
 
 n_clusters <- length(unique(clusters))
@@ -456,7 +104,6 @@ for(i in 1:n_clusters){
   cluster_labels[target_cluster] <- paste0(cluster_labels[target_cluster], sub_grps)
 }
 
-
 too_big <- names(table(cluster_labels)[which(table(cluster_labels) > 250)])
 new_cluster_labels <- cluster_labels
 for(i in 1:(length(too_big))){
@@ -466,286 +113,37 @@ for(i in 1:(length(too_big))){
   new_cluster_labels[which_replace][201:n_replace] <- paste0(too_big[i], "_2")
   
 }
-
-new_cluster_labels[which(new_cluster_labels=="cluster_F_1_2")] <- "cluster_F_1_1"
-
-df <- data.frame(id = row.names(x), group=cluster_labels)
-write.table(df, "C:/Users/iwong/Documents/MGH/CMG/cluster_labels.tsv", quote=F, sep="\t", row.names=F, col.names=T)
-
-df <- data.frame(id = row.names(x), group=new_cluster_labels)
-write.table(df, "C:/Users/iwong/Documents/MGH/CMG/cluster_labels_new_v1.4.tsv", quote=F, sep="\t", row.names=F, col.names=T)
 ```
 
-
-
-
+#3d rotate
+```{r}
+open3d()
+plot3d(x[,1:3], col="grey")
+if (!rgl.useNULL())
+  play3d(spin3d(axis = c(1, 1, 1), rpm = 4), duration = 15, )
+  movie3d( spin3d(rpm=3), duration=20,dir="C:/test/movie", clean=FALSE )
+```
 
 ```{r}
-library("stringr")
-library("dplyr")
-library("beepr")
-library("parallel")
-df <- read.table("C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_4/sample_set_membership.tsv", sep="\t", head=TRUE, stringsAsFactors = FALSE)
-individuals <- sort(unique(df$membership.sample_set_id))
-individuals <- individuals[!grepl("cram|bam|missing", individuals)]
-wd <- "C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_4/"
-PARTIIPANT_ENTITY_SET <- "C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_4/sample_set_entity.tsv"
-entity <- read.table(PARTIIPANT_ENTITY_SET, sep="\t", header=TRUE, stringsAsFactors = FALSE)
-all_bed_paths <- data.frame(ind=individuals, bed_path=rep("0", length(individuals)), stringsAsFactors = FALSE)
-
-my.read.table <- function(file) {
-  clean.lines <- sub("##.*", "", readLines(file))
-  clean.lines <- sub("#", "", clean.lines)
-  read.table(text = paste(clean.lines, collapse = "\n"), sep="\t", header = TRUE, stringsAsFactors = FALSE)
-}
-
-write.bed.intermediate <- function(inputFolder, str_n){
-  files <- list.files(inputFolder)
-  files <- files[grep("vcf$", files)]
-  df1 <- lapply(files, function(x) {
-    df <- my.read.table(paste0(inputFolder, "/", x))
-    df$SAMPLE <- colnames(df)[10]
-    colnames(df)[10] <- "IND"
-    return(df[!str_detect(df[,10], "^0"),])
-  })
-  df2 <- dplyr::bind_rows(df1)
-  flags <- str_split_fixed(do.call(rbind, df1)$IND, ":", n=7)
-  coords <- str_split_fixed(do.call(rbind, df1)$ID, "_", n=4)
-  
-  # write to a BED file formet
-  bed <- data.frame(chr = df2$CHROM)
-  bed$start <- df2$POS
-  bed$end <- as.integer(coords[,4])
-  
-  bed$name <- str_n
-  bed$sample <- df2$SAMPLE
-  
-  bed$cn <- as.integer(flags[,2])
-  bed$qs <- flags[,5]
-  bed$size <- bed$end - bed$start
-  
-  bed$copy_num <- as.integer(flags[,2])
-  bed$np <- flags[,3]
-  
-  # filter out non-reference
-  #bed <- bed[flags[,1] == 0,]
-  
-  #write.table(bed, paste0(str_n, ".bed"),sep="\t") # don't do this anymore,
-  return(bed)
-}
-
-reformat <- function(df, c){
-  n <- nrow(df)
-  DEL <- "DEL"
-  DUP <- "DUP"
-  df$cn[df$chr=="X"] <- ifelse(df$cn[df$chr=="X"]  >= 2, DUP, DEL)
-  df$cn[df$chr=="Y"] <- ifelse(df$cn[df$chr=="Y"] >= 1, DUP, DEL)
-  df$cn[df$chr!="X" & df$chr!="Y"] <- ifelse(df$cn[df$chr!="X" & df$chr!="Y"] >=2, DUP, DEL)
-  df$name <- paste0(c, "_cnv_", 1:n) 
-  return(df)
-}
-```
-
-
-
-# gCNV output analysis
-```{r}
-#Read the manifest file, download files
-for(i in 1:nrow(entity)){
-  INDIVIDUAL_TO_DOWNLOAD <- entity$entity.sample_set_id[i] 
-  PATH_IN_GOOGLE_BUCKET <- stringr::str_replace_all(stringr::str_replace_all(entity$segments_vcfs[which(entity$entity.sample_set_id==INDIVIDUAL_TO_DOWNLOAD)], "\\[|\\]", ""), ",", " ")
-  
-  files <- stringr::str_split(PATH_IN_GOOGLE_BUCKET, " ")[[1]]
-  
-  write.table(files, paste0(wd, "files_to_download.tmp"), sep="\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
-  
-  PATH_TO_DOWNLOAD_TO <- paste0(wd, INDIVIDUAL_TO_DOWNLOAD, "/")
-  dir.create(PATH_TO_DOWNLOAD_TO)
-  
-  system(paste0("bash -c 'cat ", paste0(str_replace(wd, "C:", "/mnt/c"), "files_to_download.tmp"), " | gsutil -m cp -I ", str_replace(PATH_TO_DOWNLOAD_TO, "C:", "/mnt/c"),"'"))
-  
-  system2("bash", paste0("-c \"gunzip -k /mnt/c/", str_replace_all(PATH_TO_DOWNLOAD_TO, "C:/", ""), "*gz\""  )    )
-  
-  ##re-formtat for svtk bedcluster
-  bed2<- reformat(bed1, INDIVIDUAL_TO_DOWNLOAD)
-  
-  input_bed <- paste0(PATH_TO_DOWNLOAD_TO, "/", INDIVIDUAL_TO_DOWNLOAD, ".bed")
-  write.table(bed2, input_bed, sep="\t", col.names = TRUE, quote = FALSE, row.names = FALSE)
-  all_bed_paths$bed_path[which(all_bed_paths$ind==INDIVIDUAL_TO_DOWNLOAD)] <- input_bed
-}
-
-write.table(all_bed_paths, paste0(wd, "al_bed_paths.tsv"), sep="\t", row.names = FALSE, quote=FALSE)
-```
-
-
-#prepare for svtk bedcluster - isaac
-#version 1
-```{r}
-all_bed_paths$size <- 0
-filt <- rep(FALSE, nrow(all_bed_paths))
-for(i in seq_along(individuals)){
-  all_bed_paths$bed_path[which(all_bed_paths$ind==individuals[i])] <- paste0(wd, individuals[i], "/", individuals[i], ".bed")  
-  all_bed_paths$size[i] <- table(df$membership.sample_set_id)[which(names(table(df$membership.sample_set_id)) ==  individuals[i])]
-  filt[i] <- all_bed_paths$size[i] > 100
-}
-
-
-filt_bed <- all_bed_paths[filt,]
-
-
-all_bed <- do.call(rbind, lapply(7:(nrow(filt_bed)), function(x) {
-  df_temp<-read.table(filt_bed$bed_path[x], sep="\t", header = TRUE, stringsAsFactors = FALSE)
-  df_temp$group <- filt_bed$ind[x]
-  return(df_temp)}))
-write.table(all_bed, paste0(wd, "full_merged_bed.bed"), sep="\t", col.names = FALSE, quote=FALSE, row.names = FALSE)
-write.table(all_bed, paste0(wd, "svtk_input_c.bed"), sep="\t", col.names = FALSE, quote=FALSE, row.names = FALSE)
-
-full_bed_no_dot <- all_bed
-full_bed_no_dot$sample <- str_replace_all(full_bed_no_dot$sample, "\\.", "_")
-write.table(full_bed_no_dot, paste0(wd, "svtk_input_c_no_dot.bed"), sep="\t", col.names = FALSE, quote=FALSE, row.names = FALSE)
-
-wd_ubuntu <- str_replace_all(wd, "C:/", "/mnt/c/")
-script <- paste0("svtk bedcluster ", wd_ubuntu, "svtk_input.bed", " ", wd_ubuntu, "svtk_output.bed")
-write.table(script, file=paste0(wd, "vis_script.sh"), quote=F, row.names=F, col.names=F, eol = "")
-
-script_wrapper <- paste0("#!/bin/bash \n",
-                         "conda /home/isaac/anaconda3/bin/activate py3 \n",
-                         ".", paste0(wd_ubuntu, "vis_script.sh"), "\n")
-write.table(script_wrapper, file=paste0(wd, "vis_script_wrapper.sh"), quote=F, row.names=F, col.names=F)
-
-system2("bash", paste0("-c ", "'sh ", paste0(wd_ubuntu, "vis_script_wrapper.sh'")))
-```
-
-
-#use java match
-```{r}
-match <- "C:/Users/iwong/Documents/MGH/scripts/gCNV_svtk_match.jar"
-system2("java", paste0("-jar ", match, " --help"))
-system2("java", paste0("-jar ", match, " ", paste0(wd, "full_merged_bed.bed "), paste0(wd, "full_merged_bed_svtk_output.bed "), paste0(wd, "full_merged_svtk_java_out_temp2.bed")))
-```
-
-
-#after read file from java output
-```{r}
-wd <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/"
-clustered <- read.table(paste0(wd, "full_merged_svtk_java_out.bed"),  stringsAsFactors = FALSE, sep="\t", header = TRUE)
-clustered$group <- str_extract(clustered$call_name, "cluster_.{3}")
-#save(clustered, file = "C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/clusteredDF.rda")
-#load("C:/Users/iwong/Documents/MGH/CMG/sample_set_10_1_19/clusteredDF.rda")
-
-threshold_value <- 100
-failed_threshold <- names(which(table(clustered$sample) > threshold_value))
-thresholded <- clustered[!(clustered$sample %in% failed_threshold),]
-
-filtered_dups <- thresholded$svtype == "DUP" & thresholded$qs >= 50
-filtered_dels <- thresholded$svtype == "DEL" & thresholded$qs >= 100
-filtered_vafs <- thresholded$vaf <= 0.01
-filtered <- thresholded[(filtered_dups | filtered_dels) & filtered_vafs ,]
-filtered <- thresholded[filtered_vafs,]
-
-write.table(filtered, paste0(wd, "/filtered_clustered_Calls.tsv"), sep="\t", quote=FALSE, row.names = FALSE, col.names = TRUE)
-
-
-df1 <- filtered
-groups<- unique(df1$group)
-n <- length(groups)
-a <- sapply(1:n, function(x) length(which(as.numeric(table(df1$sample[df1$group==groups[x]]))>100)))
-
-b <- sapply(1:n, function(x) length
-            (which(as.numeric(
-              table(df1$sample[df1$group==groups[x] & df1$vaf <= 0.01 & df1$qs >= 100]))>=10)))
-
-c <- sapply(1:n, function(x) length(
-  unique(union(
-    names(which(table(df1$sample[df1$group==groups[x] & df1$vaf <= 0.01 & df1$qs >= 100])>=10)),
-    names(which(table(df1$sample[df1$group==groups[x]])>100)   )))))
-
-num_samples <- sapply(1:n, function(x) as.numeric(table(df1$group)[names(table(df1$group)) == groups[x]]))
-
-#100% overlap?!?!
-for(x in 1:n){
-  temp1 <- names(which(table(df1$sample[df1$group==groups[x] & df1$vaf < 0.01])>10))
-  temp2 <- names(which(table(df1$sample[df1$group==groups[x]])>100)   )
-  print(all(temp2 %in% temp1))
-}
-
-df <- rbind(a=a, b=b, c=c, num_samples=num_samples)
-colnames(df) <- groups
-df
-#write.table(df, "C:/Users/iwong/Documents/MGH/CMG/participant_set/results/analysis.tsv", sep="\t")
-
-hist(as.numeric(table(df1$sample[df1$qs >= 100 & df1$vaf <= 0.01])), main="hist of vaf<=0.01, qs>=100 CNVs per sample", xlab="counts", col="grey")
-hist(log10(as.numeric(table(df1$sample[df1$qs >= 100 & df1$vaf <= 0.01]))), main="log10 hist of vaf<=0.01, qs>=100 CNVs per sample", xlab="counts", col="grey")
+system2("java", paste0("-jar ", wd, "gCNV_helper.jar -downloadSegmentsVCFs ", wd, "sample_set_entity.tsv ", wd))
+system2("java", paste0("-jar ", wd, "gCNV_helper.jar -convertVCFsToBEDFormat ", wd, " ", wd, "svtk_input.bed"))
+system2("svtk", paste0("bedcluster ", wd, "svtk_input.bed ", wd, "svtk_output.bed"))
+system2("java", paste0("-jar ", wd, "gCNV_helper.jar -svtkMatch ", wd, "svtk_input.bed ", wd, "svtk_output.bed ", wd, "clustered.bed"))
 ```
 
 
 
 
 
-#further data munging, using sliding QS cutoffs, can you make a figure about how many total variants there are, and the distribution of variant counts across samples? try 10, 20, 30, 40, 50
-```{r}
-wd <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_10_15_19/"
-#load("C:/Users/iwong/Documents/MGH/CMG/sample_set_10_1_19/clusteredDF.rda")
-threshold_value <- 100000000
-failed_threshold <- names(which(table(clustered$sample) > threshold_value))
-thresholded <- clustered[!(clustered$sample %in% failed_threshold),]
-thresholded <- filtered
-
-qs_window <- c(10, 20, 30, 40, 50)
-total_variants <- rep(0, length(qs_window))
-variant_counts <- vector("list", length(qs_window))
-
-for(i in seq_along(qs_window)){
-  filtered_qs <- thresholded$qs >= qs_window[i]
-  filtered_vafs <- thresholded$vaf <= 0.01
-  filtered <- thresholded[filtered_qs & filtered_vafs ,]
-  total_variants[i] <- length(unique(filtered$name))
-  variant_counts[[i]] <- as.numeric(table(filtered$sample))
-}
-
-df <- data.frame(qs_threshold=qs_window, total_variants)
-
-
-for(i in seq_along(variant_counts)){
-  hist(variant_counts[[i]], xlab="variants per sample", ylab="frequency", ylim=c(0,5000), xlim=c(0,80), main=paste0("QS: ", qs_window[i]), col="grey")
-}
-
-boxplot(variant_counts, names = qs_window, xlab="QS threshold", ylab="variants per sample", outline = FALSE, main="per sample CNVs, CMG crams")
-boxplot(variant_counts, names = qs_window, xlab="QS threshold", ylab="variants per sample", outline = TRUE, main="per sample CNVs, CMG crams")
-
-
-```
 
 
 
-#for looking at the bams now, after moving to hg38 exons
-```{r}
-library("ClusterR")
-library("dendextend")
-library("StatMeasures")
-wd <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_bam_focus_10_18_19/"
 
-#Vars
-PARTIIPANT_ENTITY_SET <- paste0(wd, "sample_set_entity.tsv")
-INDIVIDUAL_TO_DOWNLOAD <- "bam" 
-PATH_TO_DOWNLOAD_TO <- paste0(wd, INDIVIDUAL_TO_DOWNLOAD, "/")
 
-#Read the manifest file, download files
-entity <- read.table(PARTIIPANT_ENTITY_SET, sep="\t", header=TRUE, stringsAsFactors = FALSE)
 
-#set source and destination download paths
-PATH_IN_GOOGLE_BUCKET <- stringr::str_replace_all(stringr::str_replace_all(entity$output_counts[which(entity$entity.sample_set_id==INDIVIDUAL_TO_DOWNLOAD)], "\\[|\\]", ""), ",", " ")
 
-files <- stringr::str_split(PATH_IN_GOOGLE_BUCKET, " ")[[1]]
 
-write.table(files, paste0(wd, "files_to_download.tmp"), sep="\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
 
-PATH_TO_DOWNLOAD_TO <- "C:/Users/iwong/Documents/MGH/CMG/sample_set_bam_focus_10_18_19/bam1/"
-start1 <- Sys.time()
-system(paste0("bash -c 'cat ", paste0(str_replace(wd, "C:", "/mnt/c"), "files_to_download.tmp"), " | gsutil -m cp -I ", str_replace(PATH_TO_DOWNLOAD_TO, "C:", "/mnt/c"),"'"))
-end1 <- Sys.time()
-t1 <- difftime(end1, start1)
-```
 
 
 
