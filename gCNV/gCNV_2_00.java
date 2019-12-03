@@ -69,12 +69,7 @@ public class gCNV_2_00 {
 			g.svtkMatch(args[1], args[2], args[3]);
 		}
 		
-		//g.getBarcodeCounts("C:/Users/iwong/Documents/MGH/CMG_10_29_19/counting_crams_2019_11_12/sample_set_entity.tsv", "C:/Users/iwong/Documents/temp/");
-		//g.getCountsMatrix("C:/Users/iwong/Documents/temp/", "C:/Users/iwong/Documents/temp/temp_count_mat.tsv");
-		//g.getCountsMatrixParallel("C:/Users/iwong/Documents/temp/", "C:/Users/iwong/Documents/temp/temp_count_mat.tsv");
-//		g.convertVCFsToBEDFormat("C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/sample_set_entity.tsv", "C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/", "svtk_input.bed");
-//		g.svtk(svtk_input, svtk_output);
-//		g.svtkMatch("C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_input_java.bed", "C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_output_java_testing.bed", "C:/Users/iwong/Documents/MGH/CMG_10_29_19/cohort_mode_2019_11_13/svtk_match_testing.tsv");
+		
 		
 	}
 	
