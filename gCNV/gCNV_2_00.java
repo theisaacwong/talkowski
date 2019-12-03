@@ -47,10 +47,12 @@ public class gCNV_2_00 {
 		
 		gCNV_2_00 g = new gCNV_2_00(args);
 		System.out.println(g.toString());
+		
 		if(args[0].contains("-help") || args[0].contains("-h")) {
 			System.out.println("-getBarcodeCounts [entityPath] [working-directory]");
 			System.out.println("-getCountsMatrix [sourceFolder] [working-OUTPUT_PATH]");
 			System.out.println("-getCountsMatrixParallel [sourceFolder] [working-OUTPUT_PATH]");
+			System.out.println("-downloadSegmentsVCFs [entityPath] [working-dictory]");
 			System.out.println("-convertVCFsToBEDFormat [working-diectory] [output-path]");
 			System.out.println("-svtkMatch [svtk_input] [svtk_output] [output_path]");
 		} else if(args[0].equals("-getBarcodeCounts")) {
@@ -59,6 +61,8 @@ public class gCNV_2_00 {
 			g.getCountsMatrix(args[1], args[2]);
 		} else if(args[0].equals("-getCountsMatrixParallel")) {
 			g.getCountsMatrixParallel(args[1], args[2]);
+		} else if(args[0].equals("-downloadSegmentsVCFs")) {
+			g.downloadSegmentsVCFs(args[1], args[2]);
 		} else if(args[0].equals("-convertVCFsToBEDFormat")) {
 			g.convertVCFsToBEDFormat(args[1], args[2]);
 		} else if(args[0].equals("-svtkMatch")) {
@@ -217,17 +221,22 @@ public class gCNV_2_00 {
 	        	sampleNames.add(fp.getFileName().toString().replaceAll(".tsv", ""));
 	        }
 	        
+	        if(currentClusterVCFsPATH.size() < 2) {
+	        	continue;
+	        }
+	        
+	        
 	        ArrayList<DataFrame> VCFsArrayList = new ArrayList<>();
 	        for(String vcfFile : currentClusterVCFsNAME) {
 	        	//System.out.println(iter_c + " " + barcodeCountFile); iter_c++;
 	        	VCFsArrayList.add(new DataFrame(vcfFile, true, "\\t", "##"));
 	        }
 	        
-	        System.out.println(currentCluster + " " + 
-	        		currentClusterVCFsPATH.size() + " " + 
-	        		currentClusterVCFsNAME.size() + " " + 
-	        		sampleNames.size() + " " + 
-	        		VCFsArrayList.size());
+//	        System.out.println(currentCluster + " " + 
+//	        		currentClusterVCFsPATH.size() + " " + 
+//	        		currentClusterVCFsNAME.size() + " " + 
+//	        		sampleNames.size() + " " + 
+//	        		VCFsArrayList.size());
 
 	        // create an array list of to store the new column names, eg "GT, CN, NP, QA" etc
 	        String[] newColumns = VCFsArrayList.get(0).get("FORMAT", 0).split(":"); // an array list of the new field names, eg 'GT', 'CN', etc
@@ -345,8 +354,8 @@ public class gCNV_2_00 {
 		for(int i = 1; i < all_bed_paths.size(); i++) {
 			fullMergedBed.rbind(new DataFrame(all_bed_paths.get(i), true, "\\t", "@"));
 		}
-		System.out.println(wd + "svtk_input_java.bed");
-		fullMergedBed.writeFile(wd  + "svtk_input_java.bed", true);
+		System.out.println(wd + output);
+		fullMergedBed.writeFile(wd  + output, true);
 		
 		
 		
@@ -357,7 +366,7 @@ public class gCNV_2_00 {
 	 * @throws IOException 
 	 * @throws InterruptedException 
 	 */
-	public void downloadSegmentsVCFs(String entityPath, String membershipPath, String wd) throws IOException, InterruptedException {
+	public void downloadSegmentsVCFs(String entityPath, String wd) throws IOException, InterruptedException {
 //		DataFrame sampleSetMembership = new DataFrame(membershipPath, true, "\\t", "@");	
 		DataFrame sampleSetEntity = new DataFrame(entityPath, true, "\\t", "@");
 //		HashMap<String, String> all_bed_paths = new HashMap<>();
@@ -400,12 +409,12 @@ public class gCNV_2_00 {
 		        e.printStackTrace();
 		    }
 			
-			// unzip vcfs
+			// unzip vcfs, working as of 12/3/19
 	        if(System.getProperty("os.name").contains("Windows")) {
-	        	String[] dosCommand = {"bash", "-c" ,"'gunzip -k ", wdUnix + "*gz'"};
+	        	String[] dosCommand = {"bash", "-c" ,"'gunzip", "-k", pathToDownloadToUnix + "/*'"};
 	        	command = dosCommand;
 	        } else {
-	        	String[] unixCommand = {"gunzip", "-k", wdUnix + "*gz'"};
+	        	String[] unixCommand = {"gunzip", "-k" + pathToDownloadToUnix + "/*'"};
 	        	command = unixCommand;
 	        }
 	        System.out.println(String.join(" ", command));
@@ -509,8 +518,8 @@ public class gCNV_2_00 {
 		System.out.print("finding files.\t");
         Path p = Paths.get(sourceFolder);
         final int maxDepth = 10;
-        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(".tsv"));
-        matches.filter(s->s.getFileName().toString().contains("counts")).forEach(barcodeCountsPaths::add);
+        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(".barcode.counts.tsv"));
+        matches.filter(s->s.getFileName().toString().contains(".barcode.counts.tsv")).forEach(barcodeCountsPaths::add);
         matches.close();
         for(Path fp : barcodeCountsPaths) {
         	barcodeCountsFiles.add(fp.toAbsolutePath().toString());
@@ -522,7 +531,8 @@ public class gCNV_2_00 {
         
         List<Integer> toRead = Collections.synchronizedList(new ArrayList<Integer>());
         Map<Integer, ArrayList<String>> doneReading = new ConcurrentHashMap<>();
-        for(int i = 0; i < sampleNames.size(); i++) {toRead.add(i);}
+        for(int i = 0; i < sampleNames.size(); i++) {toRead.add(i);} // chnage < to <=
+        System.out.println("doneReading.size()\t" + toRead.size());
         int N_THREADS =  Runtime.getRuntime().availableProcessors();
 		ExecutorService exServer = Executors.newFixedThreadPool(N_THREADS);
 		for (int i = 0; i < N_THREADS; i++) {
@@ -534,6 +544,7 @@ public class gCNV_2_00 {
 						try {
 							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
 							doneReading.put(currentFile, countsDF.get("COUNT"));
+							//System.out.println(countsDF.get("COUNT").size());
 						} catch (IOException e) {
 							e.printStackTrace();
 						}
@@ -590,7 +601,7 @@ public class gCNV_2_00 {
 			line.append(sampleNames.get(i) + "\t");
 			for(int k = 0; k < countsArrayList.get(i).size(); k++) {
 				line.append(countsArrayList.get(i).get(k));
-				if(k != countsArrayList.size()-1) {
+				if(k != countsArrayList.get(i).size()-1) {
 					line.append("\t");
 				}
 			}
