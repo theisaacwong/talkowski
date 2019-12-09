@@ -11,7 +11,8 @@
 
 
 
-java -Xmx2g -jar DupCallerPipe.jar calcMD5 /data/talkowski/iwong/files/ncdu_cron_reports/tmp/dup_shard_${LSB_JOBINDEX} > /data/talkowski/iwong/files/ncdu_cron_reports/tmp/md5_dup_${LSB_JOBINDEX}
+java -Xmx8g -jar DupCallerPipe.jar calcMD5 /data/talkowski/iwong/files/ncdu_cron_reports/tmp/dup_shard_${LSB_JOBINDEX} > /data/talkowski/iwong/files/ncdu_cron_reports/tmp/md5_dup_${LSB_JOBINDEX}
+
 
 
 
