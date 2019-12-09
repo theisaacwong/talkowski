@@ -1,0 +1,19 @@
+#!/bin/bash
+#BSUB -J md5calc[1-100]
+#BSUB -o /data/talkowski/iwong/files/log_files/dupcaller100.log
+#BSUB -e /data/talkowski/iwong/files/err_files/dupcalasf100.err
+#BSUB -q big
+#BSUB -n 5
+#BSUB -M 8000
+#BSUB -R rusage[mem=8000]
+#BSUB swp=8G
+#BSUB -sla miket_sc
+
+
+
+java -Xmx2g -jar DupCallerPipe.jar calcMD5 /data/talkowski/iwong/files/ncdu_cron_reports/tmp/dup_shard_${LSB_JOBINDEX} > /data/talkowski/iwong/files/ncdu_cron_reports/tmp/md5_dup_${LSB_JOBINDEX}
+
+
+
+
+

@@ -1,0 +1,43 @@
+#!/bin/bash
+#BSUB -J ncdu
+#BSUB -o /data/talkowski/iwong/files/log_files/ncdu_14.log
+#BSUB -e /data/talkowski/iwong/files/err_files/ncdu_14.err
+#BSUB -q big
+#BSUB -n 5
+#BSUB mem=64G
+#BSUB swp=64G
+
+DATE=$(date "+%Y-%m-%d-%H.%M.%S")
+
+/data/talkowski/iwong/software/ncdu/ncdu -e -1xo- /data/talkowski/ | gzip >/data/talkowski/iwong/files/ncdu_cron_reports/tmp/ncdu_${DATE}.gz
+
+mv /data/talkowski/iwong/files/ncdu_cron_reports/tmp/ncdu_${DATE}.gz /data/talkowski/iwong/files/ncdu_cron_reports/ncdu_${DATE}.gz
+
+OLD_FILE=$(ls -lhtr /data/talkowski/iwong/files/ncdu_cron_reports/ | grep "ncdu.*.gz" | head -1 | awk '{print $9}' )
+rm -rf /data/talkowski/iwong/files/ncdu_cron_reports/$OLD_FILE
+
+date >> /data/talkowski/iwong/files/ncdu_cron_reports/notes.txt
+ls -lht /data/talkowski/iwong/files/ncdu_cron_reports/ >> /data/talkowski/iwong/files/ncdu_cron_reports/notes.txt
+
+
+
+
+source /etc/profile.d/00-modulepath.sh
+source /etc/profile.d/z00_lmod.sh
+module load Java/13.0.1
+zcat /data/talkowski/iwong/files/ncdu_cron_reports/ncdu_${DATE}.gz > /data/talkowski/iwong/files/ncdu_cron_reports/ncdu_temp.txt
+java -Xmx64G -jar /data/talkowski/iwong/src/scripts/ncduParser.jar /data/talkowski/iwong/files/ncdu_cron_reports/ncdu_temp.txt /data/talkowski/iwong/files/ncdu_cron_reports/ncdu_file_sizes
+rm -rf /data/talkowski/iwong/files/ncdu_cron_reports/ncdu_temp.txt
+
+bjobs -w
+bjobs -w | grep "md5calc" | awk '{print $1}' | xargs bkill
+java -Xmx64G -jar /data/talkowski/iwong/src/scripts/DupCallerPipe.jar splitFiles /data/talkowski/iwong/files/ncdu_cron_reports/ncdu_file_sizes_sorted_duplicates.tsv 100 /data/talkowski/iwong/files/ncdu_cron_reports/tmp/dup_shard
+bsub < /data/talkowski/iwong/src/scripts/calcmd5parallel.lsf
+MY_ID=$(bjobs -w | grep "md5calc" | head -1 | awk '{print $1}')
+bsub -w "numended(${MY_ID}, *)" < /data/talkowski/iwong/src/scripts/mergemd5files.lsf
+
+
+
+
+
+

@@ -1,0 +1,18 @@
+#!/bin/bash
+#BSUB -J mergeMD5
+#BSUB -o /data/talkowski/iwong/files/log_files/dupcallerR100.log
+#BSUB -e /data/talkowski/iwong/files/err_files/dupcalasf12eee.err
+#BSUB -q big
+#BSUB -n 5
+#BSUB -M 16000
+#BSUB -R rusage[mem=16000]
+#BSUB swp=32G
+#BSUB -sla miket_sc
+
+
+cat /data/talkowski/iwong/files/ncdu_cron_reports/tmp/md5_dup_* | grep "/data/talkowski/" > /data/talkowski/iwong/files/ncdu_cron_reports/tmp/files_unsorted.txt
+Rscipt /data/talkowski/iwong/src/scripts/mergeMD5files.R /data/talkowski/iwong/files/ncdu_cron_reports/tmp/files_unsorted.txt /data/talkowski/iwong/files/ncdu_cron_reports/ncdu_file_sizes_sorted_md5.tsv
+#rm -rf /data/talkowski/iwong/files/ncdu_cron_reports/tmp/dup_shard*
+#rm -rf /data/talkowski/iwong/files/ncdu_cron_reports/tmp/md5*
+
+
