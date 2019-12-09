@@ -10,7 +10,7 @@
 #BSUB -sla miket_sc
 
 
-cat /data/talkowski/iwong/files/ncdu_cron_reports/tmp/md5_dup_* | grep "/data/talkowski/" > /data/talkowski/iwong/files/ncdu_cron_reports/tmp/files_unsorted.txt
+cat /data/talkowski/iwong/files/ncdu_cron_reports/tmp/md5_dup_* | grep "talkowski" > /data/talkowski/iwong/files/ncdu_cron_reports/tmp/files_unsorted.txt
 Rscipt /data/talkowski/iwong/src/scripts/mergeMD5files.R /data/talkowski/iwong/files/ncdu_cron_reports/tmp/files_unsorted.txt /data/talkowski/iwong/files/ncdu_cron_reports/ncdu_file_sizes_sorted_md5.tsv
 #rm -rf /data/talkowski/iwong/files/ncdu_cron_reports/tmp/dup_shard*
 #rm -rf /data/talkowski/iwong/files/ncdu_cron_reports/tmp/md5*
