@@ -42,6 +42,11 @@ public class gCNV_2_00 {
 	public String[] initializationArgs;
 	public String date;
 	
+	public final String CHR = "CHR";
+	public final String START = "START";
+	public final String END = "END";
+	
+	
 	public gCNV_2_00(String[] args) {
 		initializationArgs = args;
 		date = Calendar.getInstance().getTime().toString();
@@ -50,13 +55,16 @@ public class gCNV_2_00 {
 	/*
 	 * TODO: allow user to specify a regex to identify files with, it won't be a an actual regex, just a substring to match
 	 * TODO: improve the help output, possible just include a txt file with instructions and output that
-	 * TODO: many functions will soon have optional arguements, allow for arg options like -i, -o, -- ... etc
+	 * TODO: many functions will soon have optional arguments, allow for arg options like -i, -o, -- ... etc
+	 * TODO: create a final/enum to hold things like "chr" so that it can be easily changed to "CHR", "Chr", etc
 	 */
 	
 	public static void main(String[] args) throws IOException, InterruptedException {
 		
 		gCNV_2_00 g = new gCNV_2_00(args);
 		System.out.println(g.toString());
+		System.out.println("Java version: " + System.getProperty("java.version"));
+		System.out.println("Heap Size: " + getHeapSize());
 		
 		if(args[0].contains("-help") || args[0].contains("-h")) {
 			System.out.println("-getBarcodeCounts [entityPath] [working-directory]");
@@ -67,8 +75,6 @@ public class gCNV_2_00 {
 			System.out.println("-svtkMatch [svtk_input] [svtk_output] [output_path]");
 		} else if(args[0].equals("-getBarcodeCounts")) {
 			g.getBarcodeCounts(args[1], args[2]);
-		} else if(args[0].equals("-getCountsMatrix")) {
-			g.getCountsMatrix(args[1], args[2]);
 		} else if(args[0].equals("-getCountsMatrixParallel")) {
 			if(args.length == 3) {
 				g.getCountsMatrixParallel(args[1], args[2]);	
@@ -202,19 +208,28 @@ public class gCNV_2_00 {
 	public void svtk(String svtk_input, String svtk_output) throws IOException, InterruptedException {
 		Runtime r = Runtime.getRuntime();
 		Process p = r.exec("svtk bedcluster " + svtk_input + " " + svtk_output); // linux
-//		Process p = r.exec("bash -c 'svtk bedcluster  " + svtk_input + " " + svtk_output + "'"); // windows
 		p.waitFor();
 	}
 	
 	/**
-	 * TODO: make run parallel??, currently, it runs in < 1 minute, so not a priority
-	 * TODO: allow user to specify a regex to match vcfs, eg 'genotype-segments'
-	 * @param entityPath
-	 * @param membershipPath
+	 * A wrapper to call the full convertVCFsToBEDFormat() using generic arguements
 	 * @param wd
-	 * @throws IOException 
+	 * @param output
+	 * @throws IOException
 	 */
 	public void convertVCFsToBEDFormat(String wd, String output) throws IOException {
+		convertVCFsToBEDFormat(wd, output, "genotyped-segments-", ".vcf");
+	}
+	
+	/**
+	 * 
+	 * @param wd - the working directory where VCFs are stored. VCFs can be in sub-directories.
+	 * @param output - The output path for the final consolidated BED file
+	 * @param prefixRegex - prefix to trim from file name, eg "genotyped-segments-"
+	 * @param suffixRegex - suffix used to identify VCF files, used also to trim from file name. eg ".vcf"
+	 * @throws IOException
+	 */
+	public void convertVCFsToBEDFormat(String wd, String output, String prefixRegex, String suffixRegex) throws IOException {
 		File[] directories = new File(wd).listFiles(File::isDirectory);
 		System.out.println(Arrays.toString(directories));
 		System.out.println("n directories: " + directories.length);
@@ -233,12 +248,12 @@ public class gCNV_2_00 {
 			// get a path to all the vcf files, similar to 'ls wd/*vcf'
 	        Path p = Paths.get(currentCluster);
 	        final int maxDepth = 1;
-	        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(".vcf"));
-	        matches.filter(s->s.getFileName().toString().contains("vcf")).forEach(currentClusterVCFsPATH::add);
+	        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(suffixRegex));
+	        matches.filter(s->s.getFileName().toString().endsWith(suffixRegex)).forEach(currentClusterVCFsPATH::add);
 	        matches.close();
 	        for(Path fp : currentClusterVCFsPATH) {
 	        	currentClusterVCFsNAME.add(fp.toAbsolutePath().toString());
-	        	sampleNames.add(fp.getFileName().toString().replaceAll(".tsv", ""));
+	        	sampleNames.add(fp.getFileName().toString().replaceAll(suffixRegex, ""));
 	        }
 	        
 	        // if there are no vcfs in this folder, move on to the next folder
@@ -278,7 +293,7 @@ public class gCNV_2_00 {
 	        	}
 	        	ArrayList<String> sample = new ArrayList<>();
 	        	for(int j = 0; j < VCFsArrayList.get(k).nrow(); j++) {
-	        		sample.add(sampleNames.get(k).replace("genotyped-segments-", "").replace(".vcf", ""));
+	        		sample.add(sampleNames.get(k).replace(prefixRegex, "").replace(suffixRegex, ""));
 	        	}
 	        	
 	        	// create a list of lists to store the new column values
@@ -288,7 +303,7 @@ public class gCNV_2_00 {
 	        			VCFsArrayList.get(k).fieldNames[VCFsArrayList.get(k).fieldNames.length -1]);
 	        	
 	        	//sanity check
-	        	if(columnValues.size() != VCFsArrayList.get(k).nrow()) System.out.println("ERROR 24824776");
+	        	if(columnValues.size() != VCFsArrayList.get(k).nrow()) System.out.println("ERROR 2482469776");
 	        	
 	        	// add a list to store every new field we will be parsing/adding
 	        	for(int j = 0; j < newColumnNames.size(); j++) {
@@ -315,7 +330,7 @@ public class gCNV_2_00 {
 	        	columnNamesToAdd.addAll(newColumnNames);	columnValuesToAdd.addAll(newColumnValues);
 	        	boolean temp_1 = currentVCF.addColumns(columnNamesToAdd, columnValuesToAdd);
 	        	if(!temp_1) {
-	        		System.out.println("eror 427291233: " + currentClusterVCFsNAME.get(k));
+	        		System.out.println("eror 42721191233: " + currentClusterVCFsNAME.get(k));
 	        	}
 	        	//System.out.println(temp_1);
 	        	// label dups and dels
@@ -326,9 +341,9 @@ public class gCNV_2_00 {
 	        		//System.out.println(currentVCF.get("chr").size());
 	        		String currChr = currentVCF.get("chr").get(j);
 	        		String svt = "NA_j";
-	        		if(currChr.equals("chrX")) {
+	        		if(currChr.contains("X") || currChr.contains("x")) {
 	        			svt = Integer.parseInt(currentVCF.get("CN").get(j)) >= 2 ? "DUP" : "DEL";
-	        		} else if(currChr.equals("chrY")) {
+	        		} else if(currChr.contains("Y") || currChr.contains("y")) {
 	        			svt = Integer.parseInt(currentVCF.get("CN").get(j)) >= 1 ? "DUP" : "DEL";
 	        		} else {
 	        			svt = Integer.parseInt(currentVCF.get("CN").get(j)) >= 2 ? "DUP" : "DEL";
@@ -378,19 +393,30 @@ public class gCNV_2_00 {
 	}
 	
 	/**
-	 * TODO: allow user to specify name of column holding segment vcfs. eg "segments_vcfs"
-	 * TODO: test on unix
-	 * downloads vcfs from cohort and case mode
-	 * @throws IOException 
-	 * @throws InterruptedException 
+	 * 
+	 * @param entityPath
+	 * @param wd
+	 * @throws IOException
+	 * @throws InterruptedException
 	 */
 	public void downloadSegmentsVCFs(String entityPath, String wd) throws IOException, InterruptedException {
-//		DataFrame sampleSetMembership = new DataFrame(membershipPath, true, "\\t", "@");	
+		downloadSegmentsVCFs(entityPath, wd, "segments_vcfs");
+	}
+	
+	
+	/**
+	 * TODO: test on unix
+	 * @param entityPath - full path to the entity file, eg "sample_set_entity.tsv"
+	 * @param wd - working directory, where the files should be downloaded to
+	 * @param segments_vcfs_columnName - the name of the column in the entity file containing the segment_vcfs, eg "segments_vcfs"
+	 * @throws IOException
+	 * @throws InterruptedException
+	 */
+	public void downloadSegmentsVCFs(String entityPath, String wd, String segments_vcfs_columnName) throws IOException, InterruptedException {
 		DataFrame sampleSetEntity = new DataFrame(entityPath, true, "\\t", "@");
-//		HashMap<String, String> all_bed_paths = new HashMap<>();
 		for(int i = 0; i < sampleSetEntity.nrow(); i++) {
 			String individualToDownload = sampleSetEntity.get("entity:sample_set_id", i);
-			String pathInGoogleBucket = sampleSetEntity.get("segments_vcfs", i).replaceAll("\\[|\\]|\"", "").replaceAll(",", " ");
+			String pathInGoogleBucket = sampleSetEntity.get(segments_vcfs_columnName, i).replaceAll("\\[|\\]|\"", "").replaceAll(",", " ");
 			String[] files = pathInGoogleBucket.split(" ");
 			
 			if(files.length < 2) {continue;}
@@ -412,22 +438,24 @@ public class gCNV_2_00 {
 	        String wdUnix = wd.replace("C:", "/mnt/c");
 	        String pathToDownloadToUnix = wdUnix + individualToDownload;
 			
-	        //this is only tested on windows, and it works so far. ITS VERY DELICATE. 
-	        // download vcfs
+	        downloadFiles(wdUnix + individualToDownload, pathToDownloadToUnix);
+	        
+//	        //this is only tested on windows, and it works so far. ITS VERY DELICATE. 
+//	        // download vcfs
 	        String[] command;
-	        if(System.getProperty("os.name").contains("Windows")) {
-	        	String[] dosCommand = {"bash", "-c" ,"'cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
-	        	command = dosCommand;
-	        } else {
-	        	String[] unixCommand = {"cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
-	        	command = unixCommand;
-	        }
-	        System.out.println(String.join(" ", command));
-			try {
-		        new ProcessBuilder(command).inheritIO().start().waitFor();
-		    } catch(IOException e) {
-		        e.printStackTrace();
-		    }
+//	        if(System.getProperty("os.name").contains("Windows")) {
+//	        	String[] dosCommand = {"bash", "-c" ,"'cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
+//	        	command = dosCommand;
+//	        } else {
+//	        	String[] unixCommand = {"cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
+//	        	command = unixCommand;
+//	        }
+//	        System.out.println(String.join(" ", command));
+//			try {
+//		        new ProcessBuilder(command).inheritIO().start().waitFor();
+//		    } catch(IOException e) {
+//		        e.printStackTrace();
+//		    }
 			
 			// unzip vcfs, working as of 12/3/19
 	        if(System.getProperty("os.name").contains("Windows")) {
@@ -447,83 +475,6 @@ public class gCNV_2_00 {
 	}
 	
 	/**
-	 * @deprecated - please use parallel version, while this worked at some point,  it is no longer supported
-	 * @param sourceFolder
-	 * @param OUTPUT_PATH
-	 * @throws IOException
-	 */
-	public void getCountsMatrix(String sourceFolder, String OUTPUT_PATH) throws IOException {
-		ArrayList<Path> barcodeCountsPaths = new ArrayList<>();
-		ArrayList<String> barcodeCountsFiles = new ArrayList<>();
-		ArrayList<String> sampleNames = new ArrayList<>();
-		
-		System.out.print("finding files.\t");
-        Path p = Paths.get(sourceFolder);
-        final int maxDepth = 10;
-        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(".tsv"));
-        matches.filter(s->s.getFileName().toString().contains("counts")).forEach(barcodeCountsPaths::add);
-        matches.close();
-        for(Path fp : barcodeCountsPaths) {
-        	barcodeCountsFiles.add(fp.toAbsolutePath().toString());
-        	sampleNames.add(fp.getFileName().toString().replaceAll(".barcode.counts.tsv", ""));
-        }
-        System.out.println("found " + sampleNames.size() + " files");
-        
-        System.out.print("reading files. \t");
-        ArrayList<ArrayList<String>> countsArrayList = new ArrayList<>();
-        //int iter_c = 1;
-        for(String barcodeCountFile : barcodeCountsFiles) {
-        	//System.out.println(iter_c + " " + barcodeCountFile); iter_c++;
-        	DataFrame countsDF = new DataFrame(barcodeCountFile, true, "\\t", "@");
-        	countsArrayList.add(countsDF.get("COUNT"));
-        }
-        System.out.println("done reading files");
-        
-        
-        
-        System.out.print("generating counts matrix. \t");
-        ArrayList<String> labels = new ArrayList<>();
-        DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(0), true, "\\t", "@");
-        for(int i = 0; i < countsDF.nrow(); i++) {
-        	labels.add(countsDF.get("CONTIG", i) + "_" + countsDF.get("START", i) + "_" + countsDF.get("END", i));
-        }
-        System.out.println("done generating counts matrix");
-
-        System.out.println("sampleNames.size()\t" + sampleNames.size());
-        System.out.println("countsArrayList.size()\t" +  countsArrayList.size());
-        System.out.println("countsArrayList.get(0).size()\t" +  countsArrayList.get(0).size());
-        System.out.println("labels.size()\t" + labels.size());
-        System.out.println("writing counts matrix");
-
-		File file = new File(OUTPUT_PATH);
-        BufferedWriter output = new BufferedWriter(new FileWriter(file));
-		
-		for(int i = 0; i < labels.size(); i++) {
-			output.write(labels.get(i));
-			if(i != labels.size()-1) {
-				output.write("\t");	
-			}
-		} 
-		output.write("\n");
-		
-		for(int i = 0; i < sampleNames.size(); i++) {
-			StringBuilder line = new StringBuilder();
-			line.append(sampleNames.get(i) + "\t");
-			for(int k = 0; k < countsArrayList.get(i).size(); k++) {
-				line.append(countsArrayList.get(i).get(k));
-				if(k != countsArrayList.size()-1) {
-					line.append("\t");
-				}
-			}
-			if(i != sampleNames.size()-1) {
-				line.append("\n");
-			}
-			output.write(line.toString());
-		}
-		output.close();
-	}
-	
-	/**
 	 * calls getCountsMatrixParallel() without specifying a regex
 	 * @param sourceFolder
 	 * @param OUTPUT_PATH
@@ -536,10 +487,9 @@ public class gCNV_2_00 {
 	
 	/**
 	 * Reads in barcode counts files in parallel, and writes a counts matrix
-	 * TODO: update progress bar, stdout lines
-	 * @param sourceFolder
-	 * @param OUTPUT_PATH
-	 * @param countsRegex - the regex to identify counts files
+	 * @param sourceFolder - directory where files are located in, files can be in sub-directories. 
+	 * @param OUTPUT_PATH - the full output path where the matrix file will be written to
+	 * @param countsRegex - the regex suffix to identify counts files
 	 * @throws IOException
 	 * @throws InterruptedException 
 	 */
@@ -560,7 +510,7 @@ public class gCNV_2_00 {
         }
         System.out.println("found " + sampleNames.size() + " files");
         
-        System.out.print("reading files. \t");
+        System.out.println("reading files. \t");
         
         // toRead functions as a synchronized queue so each thread knows which file to read next
         // each dataframe is then mapped to a unique index number so that the arraylist of dataframes
@@ -568,7 +518,6 @@ public class gCNV_2_00 {
         List<Integer> toRead = Collections.synchronizedList(new ArrayList<Integer>());
         Map<Integer, ArrayList<String>> doneReading = new ConcurrentHashMap<>();
         for(int i = 0; i < sampleNames.size(); i++) {toRead.add(i);} 
-        System.out.println("doneReading.size()\t" + toRead.size());
         int N_THREADS =  Runtime.getRuntime().availableProcessors();
 		ExecutorService exServer = Executors.newFixedThreadPool(N_THREADS);
 		int totalNFiles = toRead.size();
@@ -581,7 +530,7 @@ public class gCNV_2_00 {
 						try {
 							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
 							doneReading.put(currentFile, countsDF.get("COUNT"));
-							progressPercentage(toRead.size(), totalNFiles);
+							progressPercentage(totalNFiles - toRead.size(), totalNFiles, barcodeCountsFiles.get(currentFile));
 						} catch (IOException e) {
 							e.printStackTrace();
 						}
@@ -601,11 +550,8 @@ public class gCNV_2_00 {
 		for(int i = 0; i < doneReading.size(); i++) {
 			countsArrayList.add(doneReading.get(i));
 		}
-
-        
         
         System.out.println("done reading files");
-        
         
         // 'labels' is the exon labels, / column names
         System.out.print("generating counts matrix. \t");
@@ -653,21 +599,31 @@ public class gCNV_2_00 {
 	}
 
 	/**
-	 * TODO: create a helper method to download files, rather than duplicate code everytime 
-	 * TODO: allow user to specify which column name to use, eg "output_counts_barcode"
-	 * downloads the barcode counts files from the entity path file
-	 * @param entityPath - the full path to the entity file
-	 * @param wd - the working directory
+	 * a wrapper for the full getBarcodeCounts() with generic args
+	 * @param entityPath
+	 * @param wd
 	 * @throws IOException
 	 * @throws InterruptedException
 	 */
 	public void getBarcodeCounts(String entityPath, String wd) throws IOException, InterruptedException {
+		getBarcodeCounts(entityPath, wd, "output_counts_barcode");
+	}
+
+	/**
+	 * Downloads the barcode counts file from terra/firecloud
+	 * @param entityPath - full path to the entity file, eg "/documents/sample_set_entity.tsv"
+	 * @param wd - the directory to download the counts files to
+	 * @param output_counts_barcode_regex - the name of the column containing the counts files, eg "output_counts_barcode"
+	 * @throws IOException
+	 * @throws InterruptedException
+	 */
+	public void getBarcodeCounts(String entityPath, String wd, String output_counts_barcode_regex) throws IOException, InterruptedException {
 		DataFrame entityDF = new DataFrame(entityPath, true, "\\t", "@");
 		System.out.println(entityDF.nrow());
 		System.out.println(entityDF.columnMapping.toString());
 		for(int i = 3; i < entityDF.nrow(); i++) {
 			String individualToDownload = entityDF.get("entity:sample_set_id", i);
-			String pathInGoogleBucket = entityDF.get("output_counts_barcode", i).replaceAll("\\[|\\]|\"", "").replaceAll(",", " ");
+			String pathInGoogleBucket = entityDF.get(output_counts_barcode_regex, i).replaceAll("\\[|\\]|\"", "").replaceAll(",", " ");
 			String[] files = pathInGoogleBucket.split(" ");
 			
 			if(files.length < 2) {continue;}
@@ -690,23 +646,49 @@ public class gCNV_2_00 {
 	        String wdUnix = wd.replace("C:", "/mnt/c");
 	        String pathToDownloadToUnix = wdUnix + individualToDownload;
 			
-	        //this is only tested on windows, and it works so far. ITS VERY DELICATE. 
-	        String[] command;
-	        if(System.getProperty("os.name").contains("Windows")) {
-	        	String[] dosCommand = {"bash", "-c" ,"'cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
-	        	command = dosCommand;
-	        } else {
-	        	String[] unixCommand = {"cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
-	        	command = unixCommand;
-	        }
-	        System.out.println(String.join(" ", command));
+	        downloadFiles(wdUnix+individualToDownload+temp_suffix, pathToDownloadToUnix);
 	        
-			try {
-		        new ProcessBuilder(command).inheritIO().start().waitFor();
-		    } catch(IOException e) {
-		        e.printStackTrace();
-		    }
+//	        //this is only tested on windows, and it works so far. ITS VERY DELICATE. 
+//	        String[] command;
+//	        if(System.getProperty("os.name").contains("Windows")) {
+//	        	String[] dosCommand = {"bash", "-c" ,"'cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
+//	        	command = dosCommand;
+//	        } else {
+//	        	String[] unixCommand = {"cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
+//	        	command = unixCommand;
+//	        }
+//	        System.out.println(String.join(" ", command));
+//	        
+//			try {
+//		        new ProcessBuilder(command).inheritIO().start().waitFor();
+//		    } catch(IOException e) {
+//		        e.printStackTrace();
+//		    }
 		}
+	}
+	
+	/**
+	 * takes in a file containing a list of files to download. downloads those files. 
+	 * this has only been tested on windows, it is VERY DELICATE
+	 * @param filesFile
+	 * @throws InterruptedException 
+	 */
+	public static void downloadFiles(String filesFile, String pathToDownloadToUnix) throws InterruptedException {
+        String[] command;
+        if(System.getProperty("os.name").contains("Windows")) {
+        	String[] dosCommand = {"bash", "-c" ,"'cat", filesFile, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
+        	command = dosCommand;
+        } else {
+        	String[] unixCommand = {"cat", filesFile, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
+        	command = unixCommand;
+        }
+        System.out.println(String.join(" ", command));
+        
+		try {
+	        new ProcessBuilder(command).inheritIO().start().waitFor();
+	    } catch(IOException e) {
+	        e.printStackTrace();
+	    }
 	}
 	
 	/**
@@ -714,7 +696,7 @@ public class gCNV_2_00 {
 	 * @param remain
 	 * @param total
 	 */
-	public static void progressPercentage(int remain, int total) {
+	public static void progressPercentage(int remain, int total, String message) {
 	    if (remain > total) {
 	        throw new IllegalArgumentException();
 	    }
@@ -729,11 +711,30 @@ public class gCNV_2_00 {
 	        bareDone.append(icon);
 	    }
 	    String bareRemain = bare.substring(remainProcent, bare.length());
-	    System.out.print("\r" + bareDone + bareRemain + " " + remainProcent * 10 + "%  " + remain + " / " + total);
+	    System.out.print("\r" + bareDone + bareRemain + " " + remainProcent * 10 + "%  " + remain + " / " + total + "  " + message);
 	    if (remain == total) {
 	        System.out.print("\n");
 	    }
 	}
+	
+	/**
+	 * @return returns the current JVM heap size in human readable format
+	 */
+	public static String getHeapSize() {
+		return humanReadableByteCount(Runtime.getRuntime().totalMemory());
+	}
+	
+	/**
+	 * @param bytes
+	 * @return human readable version of bytes
+	 */
+	public static String humanReadableByteCount(long bytes) {
+		if (bytes < 1024) return bytes + " B";
+		int exp = (int) (Math.log(bytes) / 6.907755278982137);
+		char pre = "KMGTPE".charAt(exp-1);
+		return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
+	}
+	
 	
 	
 	
