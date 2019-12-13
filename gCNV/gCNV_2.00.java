@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 /**
  * 
  * @author Isaac Wong
- * December 2, 2019
+ * @since December 2, 2019
  * Massachusetts General Hospital
  * Center for Genomic Medicine
  * Talkowski Lab
@@ -53,7 +53,6 @@ public class gCNV_2_00 {
 	}
 	
 	/*
-	 * TODO: allow user to specify a regex to identify files with, it won't be a an actual regex, just a substring to match
 	 * TODO: improve the help output, possible just include a txt file with instructions and output that
 	 * TODO: many functions will soon have optional arguments, allow for arg options like -i, -o, -- ... etc
 	 * TODO: create a final/enum to hold things like "chr" so that it can be easily changed to "CHR", "Chr", etc
@@ -87,6 +86,65 @@ public class gCNV_2_00 {
 			g.convertVCFsToBEDFormat(args[1], args[2]);
 		} else if(args[0].equals("-svtkMatch")) {
 			g.svtkMatch(args[1], args[2], args[3]);
+		}
+		
+		
+		if(args[0].contains("-help") || args[0].contains("-h")) {
+			System.out.println("java -jar [Command] [required argument(s)] {optional arguement(s)}");
+				System.out.println("\tgetBarcodeCounts [entityPath] [working-directory] {counts-field-name}");
+					System.out.println("Download the read count files specified in the entity file");
+					System.out.println("\t\t[entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'");
+					System.out.println("\t\t[working-directory] - Directory to download files to. eg '/home/gCNV/'");
+					System.out.println("\t\t{counts-field-name} - optional - The name of the column in the entity file containing the counts paths. eg 'output_counts_barcode'");
+				System.out.println("\tgetCountsMatrix [sourceFolder] [OUTPUT_PATH] {regex}");
+					System.out.println("Read in all read count files and generate a matrix file");
+					System.out.println("\t\t[sourceFolder] - Directory where read count files are located in, files can be in sub-directories.");
+					System.out.println("\t\t[OUTPUT_PATH] -  The full output path where the matrix file will be written to");
+					System.out.println("\t\t{regex} - optional - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'");
+				System.out.println("\tdownloadSegmentsVCFs [entityPath] [working-directory] {column-name}");
+					System.out.println("Download the VCF file outputs from running the main gCNV algorithm");
+					System.out.println("\t\t[entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'");
+					System.out.println("\t\t[working-directory] - Directory to download files to. eg '/home/gCNV/'");
+					System.out.println("\t\t{column-name} - optional - The name of the column in the entity file containing the counts paths. eg 'segments_vcfs'");
+				System.out.println("\tconvertVCFsToBEDFormat [working-directory] [output-path] {prefix-regex} {suffix-regex}");
+					System.out.println("Convert the gCNV VCF output files to BED format for svtk bedlcuster input");
+					System.out.println("\t\t[working-directory] - Directory where VCF files are located in, files can be in sub-directories.");
+					System.out.println("\t\t[ouput-path] - The output path for the final consolidated BED file");
+					System.out.println("\t\t{prefix-regex} - prefix to trim from file name, eg 'genotyped-segments-'");
+					System.out.println("\t\t{suffix-regex} - suffix used to identify VCF files, used also to trim from file name. eg '.vcf'");
+				System.out.println("\tsvtkMatch [svtk_input] [svtk_output] [output_path]");
+					System.out.println("Match up the gCNV meta data with the svtk bedcluster meta data and write to file");
+					System.out.println("\t\t[svtk_input]");
+					System.out.println("\t\t[svtk_output]");
+					System.out.println("\t\t[output_path]");
+		} else if(args[0].equals("getBarcodeCounts")) {
+			if(args.length == 3) {
+				g.getBarcodeCounts(args[1], args[2]);	
+			} else if(args.length == 4) {
+				g.getBarcodeCounts(args[1], args[2], args[3]);
+			}
+		} else if(args[0].equals("getCountsMatrix")) {
+			if(args.length == 3) {
+				g.getCountsMatrixParallel(args[1], args[2]);	
+			} else if(args.length == 4) {
+				g.getCountsMatrixParallel(args[1], args[2], args[3]);
+			}
+		} else if(args[0].equals("downloadSegmentsVCFs")) {
+			if(args.length == 3) {
+				g.downloadSegmentsVCFs(args[1], args[2]);	
+			} else if(args.length == 4) {
+				g.downloadSegmentsVCFs(args[1], args[2], args[3]);
+			}
+		} else if(args[0].equals("convertVCFsToBEDFormat")) {
+			if(args.length == 3) {
+				g.convertVCFsToBEDFormat(args[1], args[2]);
+			} else if(args.length == 4) {
+				g.convertVCFsToBEDFormat(args[1], args[2], args[3], args[4]);
+			}
+		} else if(args[0].equals("svtkMatch")) {
+			if(args.length == 4) {
+				g.svtkMatch(args[1], args[2], args[3]);	
+			}
 		}
 		
 	}
@@ -196,7 +254,6 @@ public class gCNV_2_00 {
 		
 		svtkOutput.addColumns(columnNames, columnValues);
 		svtkOutput.writeFile(match_output, true);
-
 	}
 	
 	/**
@@ -405,7 +462,6 @@ public class gCNV_2_00 {
 	
 	
 	/**
-	 * TODO: test on unix
 	 * @param entityPath - full path to the entity file, eg "sample_set_entity.tsv"
 	 * @param wd - working directory, where the files should be downloaded to
 	 * @param segments_vcfs_columnName - the name of the column in the entity file containing the segment_vcfs, eg "segments_vcfs"
