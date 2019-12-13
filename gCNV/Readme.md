@@ -1,4 +1,5 @@
-java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}
+
+        java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}
 
         getBarcodeCounts [entityPath] [working-directory] {counts-field-name}
                 Download the read count files specified in the entity file
