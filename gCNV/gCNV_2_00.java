@@ -29,6 +29,11 @@ import java.util.stream.Stream;
  * Talkowski Lab
  * 
  * This tool is designed as a bridge between the various steps of gCNV
+ * 
+ * Contact Information
+ * website: https://talkowski.mgh.harvard.edu/
+ * email: iwong@broadinstitute.org
+ * github: https://github.com/theisaacwong/
  *
  */
 public class gCNV_2_00 {
@@ -42,6 +47,9 @@ public class gCNV_2_00 {
 		date = Calendar.getInstance().getTime().toString();
 	}
 	
+	/*
+	 * TODO: allow user to specify a regex to identify files with, it won't be a an actual regex, just a substring to match
+	 */
 	
 	public static void main(String[] args) throws IOException, InterruptedException {
 		
@@ -51,7 +59,7 @@ public class gCNV_2_00 {
 		if(args[0].contains("-help") || args[0].contains("-h")) {
 			System.out.println("-getBarcodeCounts [entityPath] [working-directory]");
 			System.out.println("-getCountsMatrix [sourceFolder] [working-OUTPUT_PATH]");
-			System.out.println("-getCountsMatrixParallel [sourceFolder] [working-OUTPUT_PATH]");
+			System.out.println("-getCountsMatrixParallel [sourceFolder] [working-OUTPUT_PATH] [counts regex]");
 			System.out.println("-downloadSegmentsVCFs [entityPath] [working-dictory]");
 			System.out.println("-convertVCFsToBEDFormat [working-diectory] [output-path]");
 			System.out.println("-svtkMatch [svtk_input] [svtk_output] [output_path]");
@@ -60,7 +68,11 @@ public class gCNV_2_00 {
 		} else if(args[0].equals("-getCountsMatrix")) {
 			g.getCountsMatrix(args[1], args[2]);
 		} else if(args[0].equals("-getCountsMatrixParallel")) {
-			g.getCountsMatrixParallel(args[1], args[2]);
+			if(args.length == 3) {
+				g.getCountsMatrixParallel(args[1], args[2]);	
+			} else if(args.length == 4) {
+				g.getCountsMatrixParallel(args[1], args[2], args[3]);
+			}
 		} else if(args[0].equals("-downloadSegmentsVCFs")) {
 			g.downloadSegmentsVCFs(args[1], args[2]);
 		} else if(args[0].equals("-convertVCFsToBEDFormat")) {
@@ -69,14 +81,23 @@ public class gCNV_2_00 {
 			g.svtkMatch(args[1], args[2], args[3]);
 		}
 		
+	}
+	
+	
+	public void denovo() {
 		
-		
+	}
+
+	
+	public void defrag(String match_output, String defrag_output) {
+		/*
+		 * 1. give each CNV call its own unique ID number, have a field 
+		 */
 	}
 	
 	public String toString() {
 		return String.join(" ", initializationArgs) + "\n" + date;
 	}
-	
 	
 	/**
 	 * currently, I am hard-coding things, but in the future I can make the maps dynamically
@@ -86,9 +107,11 @@ public class gCNV_2_00 {
 	 * @throws IOException
 	 */
 	public void svtkMatch(String svtk_input, String svtk_output, String match_output) throws IOException {
+		// read in the data frames for the svtk input and output
 		DataFrame svtkInput = new DataFrame(svtk_input, true, "\\t", "@");
 		DataFrame svtkOutput = new DataFrame(svtk_output, true, "\\t", "@");
 		
+		// create hashmaps to map 'name' to CN/QS/etc values
 		HashMap<String, String> CN_map = new HashMap<>();
 		HashMap<String, String> GT_map = new HashMap<>();
 		HashMap<String, String> NP_map = new HashMap<>();
@@ -108,6 +131,7 @@ public class gCNV_2_00 {
 		
 		int oldnrow = svtkOutput.nrow();
 		int counter = 0;
+		//svtk will sometimes have two callnames in on index, so duplicate the line for each element in the bin
 		for(int i = 0; i < svtkOutput.nrow(); i++) {
 			if(svtkOutput.get("call_name", i).contains(",")) {
 				String[] call_names = svtkOutput.get("call_name", i).split(",");
@@ -125,6 +149,7 @@ public class gCNV_2_00 {
 		}
 		System.out.println("oldnrow: " + oldnrow + "\tnewnrow: " + svtkOutput.nrow() + "\trowsadded: " + counter);
 		
+		// create arraylists for all the new fields to be added
 		ArrayList<String> CN_newField = new ArrayList<>();
 		ArrayList<String> GT_newField = new ArrayList<>();
 		ArrayList<String> NP_newField = new ArrayList<>();
@@ -180,32 +205,29 @@ public class gCNV_2_00 {
 	}
 	
 	/**
-	 * TODO: make run parallel??, currenty, it runs in < 1 minute, so not a priority
+	 * TODO: make run parallel??, currently, it runs in < 1 minute, so not a priority
 	 * @param entityPath
 	 * @param membershipPath
 	 * @param wd
 	 * @throws IOException 
 	 */
 	public void convertVCFsToBEDFormat(String wd, String output) throws IOException {
-//		DataFrame sampleSetMembership = new DataFrame(membershipPath, true, "\\t", "@");	
-//		DataFrame sampleSetEntity = new DataFrame(entityPath, true, "\\t", "@");
-		
 		File[] directories = new File(wd).listFiles(File::isDirectory);
 		System.out.println(Arrays.toString(directories));
 		System.out.println("n directories: " + directories.length);
 		
 		ArrayList<String> all_bed_paths = new ArrayList<>();
 		
-		
+		// look through all directories in current working directory
 		for(int i = 0; i < directories.length; i++) {
 			int cnvNameCounter = 1; // might need to be long
-			//String currentCluster = sampleSetEntity.get("entity:sample_set_id", i);
 			String currentCluster = directories[i].getAbsolutePath();
 			
 			ArrayList<Path> currentClusterVCFsPATH = new ArrayList<>();
 			ArrayList<String> currentClusterVCFsNAME = new ArrayList<>();
 			ArrayList<String> sampleNames = new ArrayList<>();
 			
+			// get a path to all the vcf files, similar to 'ls wd/*vcf'
 	        Path p = Paths.get(currentCluster);
 	        final int maxDepth = 1;
 	        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(".vcf"));
@@ -216,22 +238,17 @@ public class gCNV_2_00 {
 	        	sampleNames.add(fp.getFileName().toString().replaceAll(".tsv", ""));
 	        }
 	        
+	        // if there are no vcfs in this folder, move on to the next folder
 	        if(currentClusterVCFsPATH.size() < 2) {
 	        	continue;
 	        }
 	        
-	        
+	        // an arraylist containing vcf dataframes
 	        ArrayList<DataFrame> VCFsArrayList = new ArrayList<>();
 	        for(String vcfFile : currentClusterVCFsNAME) {
-	        	//System.out.println(iter_c + " " + barcodeCountFile); iter_c++;
 	        	VCFsArrayList.add(new DataFrame(vcfFile, true, "\\t", "##"));
 	        }
 	        
-//	        System.out.println(currentCluster + " " + 
-//	        		currentClusterVCFsPATH.size() + " " + 
-//	        		currentClusterVCFsNAME.size() + " " + 
-//	        		sampleNames.size() + " " + 
-//	        		VCFsArrayList.size());
 
 	        // create an array list of to store the new column names, eg "GT, CN, NP, QA" etc
 	        String[] newColumns = VCFsArrayList.get(0).get("FORMAT", 0).split(":"); // an array list of the new field names, eg 'GT', 'CN', etc
@@ -240,6 +257,7 @@ public class gCNV_2_00 {
         		newColumnNames.add(newColumns[j]);
         	}
         	
+        	// to store the full merged bed file
 	        DataFrame fullClusterBed = new DataFrame();
 	        
 	        for(int k = 0; k < VCFsArrayList.size(); k++) {
@@ -286,7 +304,7 @@ public class gCNV_2_00 {
 	        	ArrayList<String> columnNamesToAdd = new ArrayList<>();
 	        	ArrayList<ArrayList<String>> columnValuesToAdd = new ArrayList<>();
 	        	
-	        	columnNamesToAdd.add("chr"); 	columnValuesToAdd.add(chr); //System.out.println(chr.size());
+	        	columnNamesToAdd.add("chr"); 	columnValuesToAdd.add(chr); 
 	        	columnNamesToAdd.add("start");	columnValuesToAdd.add(start);
 	        	columnNamesToAdd.add("end");	columnValuesToAdd.add(end);
 	        	columnNamesToAdd.add("name");	columnValuesToAdd.add(name);
@@ -422,7 +440,7 @@ public class gCNV_2_00 {
 	}
 	
 	/**
-	 * @deprecated - please use parallel version
+	 * @deprecated - please use parallel version, while this worked at some point,  it is no longer supported
 	 * @param sourceFolder
 	 * @param OUTPUT_PATH
 	 * @throws IOException
@@ -499,13 +517,25 @@ public class gCNV_2_00 {
 	}
 	
 	/**
-	 * Reads in barcode counts files in parallel, and writes a counts matrix
+	 * calls getCountsMatrixParallel() without specifying a regex
 	 * @param sourceFolder
 	 * @param OUTPUT_PATH
 	 * @throws IOException
-	 * @throws InterruptedException 
+	 * @throws InterruptedException
 	 */
 	public void getCountsMatrixParallel(String sourceFolder, String OUTPUT_PATH) throws IOException, InterruptedException {
+		getCountsMatrixParallel(sourceFolder, OUTPUT_PATH, ".barcode.counts.tsv");
+	}
+	
+	/**
+	 * Reads in barcode counts files in parallel, and writes a counts matrix
+	 * @param sourceFolder
+	 * @param OUTPUT_PATH
+	 * @param countsRegex - the regex to identify counts files
+	 * @throws IOException
+	 * @throws InterruptedException 
+	 */
+	public void getCountsMatrixParallel(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
 		ArrayList<Path> barcodeCountsPaths = new ArrayList<>();
 		ArrayList<String> barcodeCountsFiles = new ArrayList<>();
 		ArrayList<String> sampleNames = new ArrayList<>();
@@ -513,20 +543,23 @@ public class gCNV_2_00 {
 		System.out.print("finding files.\t");
         Path p = Paths.get(sourceFolder);
         final int maxDepth = 10;
-        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(".barcode.counts.tsv"));
-        matches.filter(s->s.getFileName().toString().contains(".barcode.counts.tsv")).forEach(barcodeCountsPaths::add);
+        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(countsRegex));
+        matches.filter(s->s.getFileName().toString().contains(countsRegex)).forEach(barcodeCountsPaths::add);
         matches.close();
         for(Path fp : barcodeCountsPaths) {
         	barcodeCountsFiles.add(fp.toAbsolutePath().toString());
-        	sampleNames.add(fp.getFileName().toString().replaceAll(".barcode.counts.tsv", ""));
+        	sampleNames.add(fp.getFileName().toString().replaceAll(countsRegex, ""));
         }
         System.out.println("found " + sampleNames.size() + " files");
         
         System.out.print("reading files. \t");
         
+        // toRead functions as a synchronized queue so each thread knows which file to read next
+        // each dataframe is then mapped to a unique index number so that the arraylist of dataframes
+        // can be assembled again in order even though each one is read out of order
         List<Integer> toRead = Collections.synchronizedList(new ArrayList<Integer>());
         Map<Integer, ArrayList<String>> doneReading = new ConcurrentHashMap<>();
-        for(int i = 0; i < sampleNames.size(); i++) {toRead.add(i);} // chnage < to <=
+        for(int i = 0; i < sampleNames.size(); i++) {toRead.add(i);} 
         System.out.println("doneReading.size()\t" + toRead.size());
         int N_THREADS =  Runtime.getRuntime().availableProcessors();
 		ExecutorService exServer = Executors.newFixedThreadPool(N_THREADS);
@@ -539,7 +572,6 @@ public class gCNV_2_00 {
 						try {
 							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
 							doneReading.put(currentFile, countsDF.get("COUNT"));
-							//System.out.println(countsDF.get("COUNT").size());
 						} catch (IOException e) {
 							e.printStackTrace();
 						}
@@ -565,7 +597,7 @@ public class gCNV_2_00 {
         System.out.println("done reading files");
         
         
-        
+        // 'labels' is the exon labels, / column names
         System.out.print("generating counts matrix. \t");
         ArrayList<String> labels = new ArrayList<>();
         DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(0), true, "\\t", "@");
@@ -574,6 +606,7 @@ public class gCNV_2_00 {
         }
         System.out.println("done generating counts matrix");
 
+        // for sanity checking, number should all appropriately match
         System.out.println("sampleNames.size()\t" + sampleNames.size());
         System.out.println("countsArrayList.size()\t" +  countsArrayList.size());
         System.out.println("countsArrayList.get(0).size()\t" +  countsArrayList.get(0).size());
@@ -591,6 +624,7 @@ public class gCNV_2_00 {
 		} 
 		output.write("\n");
 		
+		// written in such a way as to be readable in R, adding rownames for the sample ID
 		for(int i = 0; i < sampleNames.size(); i++) {
 			StringBuilder line = new StringBuilder();
 			line.append(sampleNames.get(i) + "\t");
