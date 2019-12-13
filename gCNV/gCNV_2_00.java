@@ -49,6 +49,8 @@ public class gCNV_2_00 {
 	
 	/*
 	 * TODO: allow user to specify a regex to identify files with, it won't be a an actual regex, just a substring to match
+	 * TODO: improve the help output, possible just include a txt file with instructions and output that
+	 * TODO: many functions will soon have optional arguements, allow for arg options like -i, -o, -- ... etc
 	 */
 	
 	public static void main(String[] args) throws IOException, InterruptedException {
@@ -206,6 +208,7 @@ public class gCNV_2_00 {
 	
 	/**
 	 * TODO: make run parallel??, currently, it runs in < 1 minute, so not a priority
+	 * TODO: allow user to specify a regex to match vcfs, eg 'genotype-segments'
 	 * @param entityPath
 	 * @param membershipPath
 	 * @param wd
@@ -375,6 +378,8 @@ public class gCNV_2_00 {
 	}
 	
 	/**
+	 * TODO: allow user to specify name of column holding segment vcfs. eg "segments_vcfs"
+	 * TODO: test on unix
 	 * downloads vcfs from cohort and case mode
 	 * @throws IOException 
 	 * @throws InterruptedException 
@@ -390,7 +395,9 @@ public class gCNV_2_00 {
 			
 			if(files.length < 2) {continue;}
 			
-			File file = new File(wd + individualToDownload + "_temp_files_to_download.txt");
+			String temp_suffix = "_files_to_download.txt";
+			
+			File file = new File(wd + individualToDownload + temp_suffix);
 			BufferedWriter output = new BufferedWriter(new FileWriter(file));
 			for(String filePath : files) {
 				output.write(filePath + "\n");
@@ -409,10 +416,10 @@ public class gCNV_2_00 {
 	        // download vcfs
 	        String[] command;
 	        if(System.getProperty("os.name").contains("Windows")) {
-	        	String[] dosCommand = {"bash", "-c" ,"'cat", wdUnix+individualToDownload+"_temp_files_to_download.txt", "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
+	        	String[] dosCommand = {"bash", "-c" ,"'cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
 	        	command = dosCommand;
 	        } else {
-	        	String[] unixCommand = {"cat", wdUnix+individualToDownload+"_temp_files_to_download.txt", "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
+	        	String[] unixCommand = {"cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
 	        	command = unixCommand;
 	        }
 	        System.out.println(String.join(" ", command));
@@ -529,6 +536,7 @@ public class gCNV_2_00 {
 	
 	/**
 	 * Reads in barcode counts files in parallel, and writes a counts matrix
+	 * TODO: update progress bar, stdout lines
 	 * @param sourceFolder
 	 * @param OUTPUT_PATH
 	 * @param countsRegex - the regex to identify counts files
@@ -563,6 +571,7 @@ public class gCNV_2_00 {
         System.out.println("doneReading.size()\t" + toRead.size());
         int N_THREADS =  Runtime.getRuntime().availableProcessors();
 		ExecutorService exServer = Executors.newFixedThreadPool(N_THREADS);
+		int totalNFiles = toRead.size();
 		for (int i = 0; i < N_THREADS; i++) {
 			exServer.execute(new Runnable() {
 				@Override
@@ -572,6 +581,7 @@ public class gCNV_2_00 {
 						try {
 							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
 							doneReading.put(currentFile, countsDF.get("COUNT"));
+							progressPercentage(toRead.size(), totalNFiles);
 						} catch (IOException e) {
 							e.printStackTrace();
 						}
@@ -643,6 +653,8 @@ public class gCNV_2_00 {
 	}
 
 	/**
+	 * TODO: create a helper method to download files, rather than duplicate code everytime 
+	 * TODO: allow user to specify which column name to use, eg "output_counts_barcode"
 	 * downloads the barcode counts files from the entity path file
 	 * @param entityPath - the full path to the entity file
 	 * @param wd - the working directory
@@ -660,7 +672,9 @@ public class gCNV_2_00 {
 			
 			if(files.length < 2) {continue;}
 			
-			File file = new File(wd + individualToDownload + "_temp_files_to_download.txt");
+			String temp_suffix = "_temp_files_to_download.txt";
+			
+			File file = new File(wd + individualToDownload + temp_suffix);
 			BufferedWriter output = new BufferedWriter(new FileWriter(file));
 			for(String filePath : files) {
 				output.write(filePath + "\n");
@@ -679,10 +693,10 @@ public class gCNV_2_00 {
 	        //this is only tested on windows, and it works so far. ITS VERY DELICATE. 
 	        String[] command;
 	        if(System.getProperty("os.name").contains("Windows")) {
-	        	String[] dosCommand = {"bash", "-c" ,"'cat", wdUnix+individualToDownload+"_temp_files_to_download.txt", "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
+	        	String[] dosCommand = {"bash", "-c" ,"'cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
 	        	command = dosCommand;
 	        } else {
-	        	String[] unixCommand = {"cat", wdUnix+individualToDownload+"_temp_files_to_download.txt", "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
+	        	String[] unixCommand = {"cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
 	        	command = unixCommand;
 	        }
 	        System.out.println(String.join(" ", command));
@@ -693,6 +707,32 @@ public class gCNV_2_00 {
 		        e.printStackTrace();
 		    }
 		}
+	}
+	
+	/**
+	 * https://stackoverflow.com/questions/852665/command-line-progress-bar-in-java
+	 * @param remain
+	 * @param total
+	 */
+	public static void progressPercentage(int remain, int total) {
+	    if (remain > total) {
+	        throw new IllegalArgumentException();
+	    }
+	    int maxBareSize = 10; // 10unit for 100%
+	    int remainProcent = ((100 * remain) / total) / maxBareSize;
+	    char defaultChar = '-';
+	    String icon = "*";
+	    String bare = new String(new char[maxBareSize]).replace('\0', defaultChar) + "]";
+	    StringBuilder bareDone = new StringBuilder();
+	    bareDone.append("[");
+	    for (int i = 0; i < remainProcent; i++) {
+	        bareDone.append(icon);
+	    }
+	    String bareRemain = bare.substring(remainProcent, bare.length());
+	    System.out.print("\r" + bareDone + bareRemain + " " + remainProcent * 10 + "%  " + remain + " / " + total);
+	    if (remain == total) {
+	        System.out.print("\n");
+	    }
 	}
 	
 	
