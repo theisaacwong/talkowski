@@ -52,12 +52,6 @@ public class gCNV_2_00 {
 		date = Calendar.getInstance().getTime().toString();
 	}
 	
-	/*
-	 * TODO: improve the help output, possible just include a txt file with instructions and output that
-	 * TODO: many functions will soon have optional arguments, allow for arg options like -i, -o, -- ... etc
-	 * TODO: create a final/enum to hold things like "chr" so that it can be easily changed to "CHR", "Chr", etc
-	 */
-	
 	public static void main(String[] args) throws IOException, InterruptedException {
 		
 		gCNV_2_00 g = new gCNV_2_00(args);
@@ -80,6 +74,13 @@ public class gCNV_2_00 {
 					System.out.println("\t\t[sourceFolder] - Directory where read count files are located in, files can be in sub-directories.");
 					System.out.println("\t\t[OUTPUT_PATH] -  The full output path where the matrix file will be written to");
 					System.out.println("\t\t{regex} - optional - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'");
+					System.out.println();
+				System.out.println("\tgetCountsMatrixBuffered [sourceFolder] [OUTPUT_PATH] [regex] {buffer-size}");
+					System.out.println("\t\tRead in all read count files and generate a matrix file");
+					System.out.println("\t\t[sourceFolder] - Directory where read count files are located in, files can be in sub-directories.");
+					System.out.println("\t\t[OUTPUT_PATH] -  The full output path where the matrix file will be written to");
+					System.out.println("\t\t[regex] - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'");
+					System.out.println("\t\t{buffer-size} - number of lines to store in memory for each thread before writing");
 					System.out.println();
 				System.out.println("\tdownloadSegmentsVCFs [entityPath] [working-directory] {column-name}");
 					System.out.println("\t\tDownload the VCF file outputs from running the main gCNV algorithm");
@@ -108,9 +109,9 @@ public class gCNV_2_00 {
 			}
 		} else if(args[0].equals("getCountsMatrix")) {
 			if(args.length == 3) {
-				g.getCountsMatrixParallel(args[1], args[2]);	
+				g.getCountsMatrix(args[1], args[2]);	
 			} else if(args.length == 4) {
-				g.getCountsMatrixParallel(args[1], args[2], args[3]);
+				g.getCountsMatrix(args[1], args[2], args[3]);
 			}
 		} else if(args[0].equals("downloadSegmentsVCFs")) {
 			if(args.length == 3) {
@@ -128,15 +129,13 @@ public class gCNV_2_00 {
 			if(args.length == 4) {
 				g.svtkMatch(args[1], args[2], args[3]);	
 			}
-		} else if(args[0].equals("getCountsMatrixFast")) {
+		} else if(args[0].equals("getCountsMatrixBuffered")) {
 			if(args.length == 4) {
-				g.getCountsMatrixFast(args[1], args[2], args[3]);
+				g.getCountsMatrixBuffered(args[1], args[2], args[3]);
+			} else if(args.length == 5) {
+				g.getCountsMatrixBuffered(args[1], args[2], args[3], Integer.parseInt(args[4]));
 			}
-		} else if(args[0].equals("getCountsMatrixV3")) {
-			if(args.length == 4) {
-				g.getCountsMatrixV3(args[1], args[2], args[3]);
-			}
-		}
+		} 
 	}
 	
 	
@@ -514,7 +513,18 @@ public class gCNV_2_00 {
 		    }
 		}
 	}
-	
+
+	/**
+	 * this is just a wrapper for the buffered version, which sets the buffer size to 20
+	 * @param sourceFolder
+	 * @param OUTPUT_PATH
+	 * @param countsRegex
+	 * @throws IOException
+	 * @throws InterruptedException
+	 */
+	public void getCountsMatrixBuffered(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
+		getCountsMatrixBuffered(sourceFolder, OUTPUT_PATH, countsRegex, 20);
+	}
 	/**
 	 * write buffer after every n files is read per thread, uses less memory as less count data is held in memory at any given time
 	 * however, uses more I/O, which will be slower overall
@@ -524,7 +534,7 @@ public class gCNV_2_00 {
 	 * @throws IOException
 	 * @throws InterruptedException
 	 */
-	public void getCountsMatrixFast(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
+	public void getCountsMatrixBuffered(String sourceFolder, String OUTPUT_PATH, String countsRegex, int BUFFER_SIZE) throws IOException, InterruptedException {
 		ArrayList<Path> barcodeCountsPaths = new ArrayList<>();
 		ArrayList<String> barcodeCountsFiles = new ArrayList<>();
 		ArrayList<String> sampleNames = new ArrayList<>();
@@ -560,7 +570,7 @@ public class gCNV_2_00 {
 					try {output = new BufferedWriter(new FileWriter(file));} catch (IOException e1) {e1.printStackTrace();}
 			        ArrayList<ArrayList<String>> countsBuffer = new ArrayList<>();
 			        int bufferCounter = 0;
-			        int BUFFER_SIZE = 20;
+//			        int BUFFER_SIZE = 20;
 			        
 			        ArrayList<String> labels = new ArrayList<>();
 			        DataFrame labelsDF = null;
@@ -630,7 +640,27 @@ public class gCNV_2_00 {
 
 	}
 	
-	public void getCountsMatrixV3(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
+	/**
+	 * this is just a wrapper for getCountsMatrix() which sets the default regex to ".barcode.counts.tsv"
+	 * @param sourceFolder
+	 * @param OUTPUT_PATH
+	 * @throws IOException
+	 * @throws InterruptedException
+	 */
+	public void getCountsMatrix(String sourceFolder, String OUTPUT_PATH) throws IOException, InterruptedException {
+		getCountsMatrix(sourceFolder, OUTPUT_PATH, ".barcode.counts.tsv");
+	}
+	/**
+	 * This is an improvement upon the previous version as it now more accurately forces GC to 
+	 * remove the DF after its been read and only keep the important field
+	 * Reads in barcode counts files in parallel, and writes a counts matrix
+	 * @param sourceFolder - directory where files are located in, files can be in sub-directories. 
+	 * @param OUTPUT_PATH - the full output path where the matrix file will be written to
+	 * @param countsRegex - the regex suffix to identify counts files
+	 * @throws IOException
+	 * @throws InterruptedException 
+	 */
+	public void getCountsMatrix(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
 		ArrayList<Path> barcodeCountsPaths = new ArrayList<>();
 		ArrayList<String> barcodeCountsFiles = new ArrayList<>();
 		ArrayList<String> sampleNames = new ArrayList<>();
@@ -736,6 +766,7 @@ public class gCNV_2_00 {
 	 * @param OUTPUT_PATH
 	 * @throws IOException
 	 * @throws InterruptedException
+	 * @deprecated
 	 */
 	public void getCountsMatrixParallel(String sourceFolder, String OUTPUT_PATH) throws IOException, InterruptedException {
 		getCountsMatrixParallel(sourceFolder, OUTPUT_PATH, ".barcode.counts.tsv");
