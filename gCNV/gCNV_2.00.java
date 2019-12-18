@@ -65,58 +65,41 @@ public class gCNV_2_00 {
 		System.out.println("Java version: " + System.getProperty("java.version"));
 		System.out.println("Heap Size: " + getHeapSize());
 		
+		System.out.println();
 		if(args[0].contains("-help") || args[0].contains("-h")) {
-			System.out.println("-getBarcodeCounts [entityPath] [working-directory]");
-			System.out.println("-getCountsMatrix [sourceFolder] [working-OUTPUT_PATH]");
-			System.out.println("-getCountsMatrixParallel [sourceFolder] [working-OUTPUT_PATH] [counts regex]");
-			System.out.println("-downloadSegmentsVCFs [entityPath] [working-dictory]");
-			System.out.println("-convertVCFsToBEDFormat [working-diectory] [output-path]");
-			System.out.println("-svtkMatch [svtk_input] [svtk_output] [output_path]");
-		} else if(args[0].equals("-getBarcodeCounts")) {
-			g.getBarcodeCounts(args[1], args[2]);
-		} else if(args[0].equals("-getCountsMatrixParallel")) {
-			if(args.length == 3) {
-				g.getCountsMatrixParallel(args[1], args[2]);	
-			} else if(args.length == 4) {
-				g.getCountsMatrixParallel(args[1], args[2], args[3]);
-			}
-		} else if(args[0].equals("-downloadSegmentsVCFs")) {
-			g.downloadSegmentsVCFs(args[1], args[2]);
-		} else if(args[0].equals("-convertVCFsToBEDFormat")) {
-			g.convertVCFsToBEDFormat(args[1], args[2]);
-		} else if(args[0].equals("-svtkMatch")) {
-			g.svtkMatch(args[1], args[2], args[3]);
-		}
-		
-		
-		if(args[0].contains("-help") || args[0].contains("-h")) {
-			System.out.println("java -jar [Command] [required argument(s)] {optional arguement(s)}");
+			System.out.println("java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}");
+			System.out.println();
 				System.out.println("\tgetBarcodeCounts [entityPath] [working-directory] {counts-field-name}");
-					System.out.println("Download the read count files specified in the entity file");
+					System.out.println("\t\tDownload the read count files specified in the entity file");
 					System.out.println("\t\t[entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'");
 					System.out.println("\t\t[working-directory] - Directory to download files to. eg '/home/gCNV/'");
 					System.out.println("\t\t{counts-field-name} - optional - The name of the column in the entity file containing the counts paths. eg 'output_counts_barcode'");
+					System.out.println();
 				System.out.println("\tgetCountsMatrix [sourceFolder] [OUTPUT_PATH] {regex}");
-					System.out.println("Read in all read count files and generate a matrix file");
+					System.out.println("\t\tRead in all read count files and generate a matrix file");
 					System.out.println("\t\t[sourceFolder] - Directory where read count files are located in, files can be in sub-directories.");
 					System.out.println("\t\t[OUTPUT_PATH] -  The full output path where the matrix file will be written to");
 					System.out.println("\t\t{regex} - optional - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'");
+					System.out.println();
 				System.out.println("\tdownloadSegmentsVCFs [entityPath] [working-directory] {column-name}");
-					System.out.println("Download the VCF file outputs from running the main gCNV algorithm");
+					System.out.println("\t\tDownload the VCF file outputs from running the main gCNV algorithm");
 					System.out.println("\t\t[entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'");
 					System.out.println("\t\t[working-directory] - Directory to download files to. eg '/home/gCNV/'");
 					System.out.println("\t\t{column-name} - optional - The name of the column in the entity file containing the counts paths. eg 'segments_vcfs'");
+					System.out.println();
 				System.out.println("\tconvertVCFsToBEDFormat [working-directory] [output-path] {prefix-regex} {suffix-regex}");
-					System.out.println("Convert the gCNV VCF output files to BED format for svtk bedlcuster input");
+					System.out.println("\t\tConvert the gCNV VCF output files to BED format for svtk bedlcuster input");
 					System.out.println("\t\t[working-directory] - Directory where VCF files are located in, files can be in sub-directories.");
 					System.out.println("\t\t[ouput-path] - The output path for the final consolidated BED file");
 					System.out.println("\t\t{prefix-regex} - prefix to trim from file name, eg 'genotyped-segments-'");
 					System.out.println("\t\t{suffix-regex} - suffix used to identify VCF files, used also to trim from file name. eg '.vcf'");
+					System.out.println();
 				System.out.println("\tsvtkMatch [svtk_input] [svtk_output] [output_path]");
-					System.out.println("Match up the gCNV meta data with the svtk bedcluster meta data and write to file");
-					System.out.println("\t\t[svtk_input]");
-					System.out.println("\t\t[svtk_output]");
-					System.out.println("\t\t[output_path]");
+					System.out.println("\t\tMatch up the gCNV meta data with the svtk bedcluster meta data and write to file");
+					System.out.println("\t\t[svtk_input] - The BED file that was given to svtk bedcluster");
+					System.out.println("\t\t[svtk_output] - The output file from svtk bedcluster");
+					System.out.println("\t\t[output_path] - The full path to write the output file to.");
+					System.out.println();
 		} else if(args[0].equals("getBarcodeCounts")) {
 			if(args.length == 3) {
 				g.getBarcodeCounts(args[1], args[2]);	
@@ -145,15 +128,17 @@ public class gCNV_2_00 {
 			if(args.length == 4) {
 				g.svtkMatch(args[1], args[2], args[3]);	
 			}
+		} else if(args[0].equals("getCountsMatrixFast")) {
+			if(args.length == 4) {
+				g.getCountsMatrixFast(args[1], args[2], args[3]);
+			}
+		} else if(args[0].equals("getCountsMatrixV3")) {
+			if(args.length == 4) {
+				g.getCountsMatrixV3(args[1], args[2], args[3]);
+			}
 		}
-		
 	}
 	
-	
-	public void denovo() {
-		
-	}
-
 	
 	public void defrag(String match_output, String defrag_output) {
 		/*
@@ -531,6 +516,221 @@ public class gCNV_2_00 {
 	}
 	
 	/**
+	 * write buffer after every n files is read per thread, uses less memory as less count data is held in memory at any given time
+	 * however, uses more I/O, which will be slower overall
+	 * @param sourceFolder
+	 * @param OUTPUT_PATH
+	 * @param countsRegex
+	 * @throws IOException
+	 * @throws InterruptedException
+	 */
+	public void getCountsMatrixFast(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
+		ArrayList<Path> barcodeCountsPaths = new ArrayList<>();
+		ArrayList<String> barcodeCountsFiles = new ArrayList<>();
+		ArrayList<String> sampleNames = new ArrayList<>();
+		
+		System.out.print("finding files.\t");
+        Path p = Paths.get(sourceFolder);
+        final int maxDepth = 10;
+        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(countsRegex));
+        matches.filter(s->s.getFileName().toString().contains(countsRegex)).forEach(barcodeCountsPaths::add);
+        matches.close();
+        for(Path fp : barcodeCountsPaths) {
+        	barcodeCountsFiles.add(fp.toAbsolutePath().toString());
+        	sampleNames.add(fp.getFileName().toString().replaceAll(countsRegex, ""));
+        }
+        System.out.println("found " + sampleNames.size() + " files");
+        
+        System.out.println("reading files. \t");
+        
+
+        
+        // toRead functions as a synchronized queue so each thread knows which file to read next
+        List<Integer> toRead = Collections.synchronizedList(new ArrayList<Integer>());
+        for(int i = 0; i < sampleNames.size(); i++) {toRead.add(i);} 
+        int N_THREADS =  Runtime.getRuntime().availableProcessors();
+		ExecutorService exServer = Executors.newFixedThreadPool(N_THREADS);
+		int totalNFiles = toRead.size();
+		for (int i = 0; i < N_THREADS; i++) {
+			exServer.execute(new Runnable() {
+				@Override
+				public void run(){
+					File file = new File(OUTPUT_PATH + "_" + Thread.currentThread().getId());
+			        BufferedWriter output = null;
+					try {output = new BufferedWriter(new FileWriter(file));} catch (IOException e1) {e1.printStackTrace();}
+			        ArrayList<ArrayList<String>> countsBuffer = new ArrayList<>();
+			        int bufferCounter = 0;
+			        int BUFFER_SIZE = 20;
+			        
+			        ArrayList<String> labels = new ArrayList<>();
+			        DataFrame labelsDF = null;
+					try {labelsDF = new DataFrame(barcodeCountsFiles.get(0), true, "\\t", "@");} catch (IOException e1) {e1.printStackTrace();}
+			        for(int i = 0; i < labelsDF.nrow(); i++) {
+			        	labels.add(labelsDF.get("CONTIG", i) + "_" + labelsDF.get("START", i) + "_" + labelsDF.get("END", i));
+			        }
+			        labelsDF = null;
+			        
+			        for(int i = 0; i < labels.size(); i++) {
+						try {output.write(labels.get(i));} catch (IOException e) {e.printStackTrace();}
+						if(i != labels.size()-1) {
+							try {output.write("\t");} catch (IOException e) {e.printStackTrace();}	
+						}
+					} 
+					try {output.write("\n");} catch (IOException e1) {e1.printStackTrace();}
+			        
+					while(toRead.size() > 0) {
+						int currentFile = toRead.remove(0);
+						try {
+							
+							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
+							countsBuffer.add(countsDF.get("COUNT")); // arraylist.copyof() and then remofe counutsDF??????
+							progressPercentage(totalNFiles - toRead.size(), totalNFiles, barcodeCountsFiles.get(currentFile));
+							
+							if(bufferCounter == BUFFER_SIZE) {
+								StringBuilder line = new StringBuilder();
+								line.append(sampleNames.get(currentFile));
+								for(int i = 0; i < countsBuffer.size(); i++) {
+									for(int k = 0; k < countsBuffer.get(i).size(); k++) {
+										line.append(countsBuffer.get(i).get(k));
+										if(k != countsBuffer.get(i).size()) {
+											line.append("\t");
+										}
+									}
+									line.append("\n");
+								}
+								output.write(line.toString());
+								
+								countsBuffer = new ArrayList<>();
+								bufferCounter = 0;
+							} else {
+								bufferCounter++;
+							}
+							
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+					StringBuilder line = new StringBuilder();
+					for(int i = 0; i < countsBuffer.size(); i++) {
+						for(int k = 0; k < countsBuffer.get(i).size(); k++) {
+							line.append(countsBuffer.get(i).get(k));
+							if(k != countsBuffer.get(i).size()) {
+								line.append("\t");
+							}
+						}
+						line.append("\n");
+					}
+					try {output.write(line.toString());} catch (IOException e1) {e1.printStackTrace();}
+					try {output.close();} catch (IOException e) {e.printStackTrace();}
+				}
+			});
+		}
+		exServer.shutdown();
+		exServer.awaitTermination(6, TimeUnit.DAYS);
+
+	}
+	
+	public void getCountsMatrixV3(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
+		ArrayList<Path> barcodeCountsPaths = new ArrayList<>();
+		ArrayList<String> barcodeCountsFiles = new ArrayList<>();
+		ArrayList<String> sampleNames = new ArrayList<>();
+		
+		System.out.print("finding files.\t");
+        Path p = Paths.get(sourceFolder);
+        final int maxDepth = 10;
+        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(countsRegex));
+        matches.filter(s->s.getFileName().toString().contains(countsRegex)).forEach(barcodeCountsPaths::add);
+        matches.close();
+        for(Path fp : barcodeCountsPaths) {
+        	barcodeCountsFiles.add(fp.toAbsolutePath().toString());
+        	sampleNames.add(fp.getFileName().toString().replaceAll(countsRegex, ""));
+        }
+        System.out.println("found " + sampleNames.size() + " files");
+        
+        System.out.println("reading files. \t");
+        
+        // toRead functions as a synchronized queue so each thread knows which file to read next
+        // each dataframe is then mapped to a unique index number so that the arraylist of dataframes
+        // can be assembled again in order even though each one is read out of order
+        List<Integer> toRead = Collections.synchronizedList(new ArrayList<Integer>());
+        Map<Integer, String> doneReading2 = new ConcurrentHashMap<>();
+        for(int i = 0; i < sampleNames.size(); i++) {toRead.add(i);} 
+        int N_THREADS =  Runtime.getRuntime().availableProcessors();
+		ExecutorService exServer = Executors.newFixedThreadPool(N_THREADS);
+		int totalNFiles = toRead.size();
+		for (int i = 0; i < N_THREADS; i++) {
+			exServer.execute(new Runnable() {
+				@Override
+				public void run() {
+					while(toRead.size() > 0) {
+						int currentFile = toRead.remove(0);
+						try {
+							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
+							doneReading2.put(currentFile, String.join("\t", countsDF.get("COUNT")));
+							progressPercentage(totalNFiles - toRead.size(), totalNFiles, barcodeCountsFiles.get(currentFile));
+							countsDF = null; // java gc is a fickle mistress
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+				}
+			});
+		}
+		exServer.shutdown();
+		exServer.awaitTermination(6, TimeUnit.DAYS);
+
+		ArrayList<String> countsArrayList = new ArrayList<>();
+		for(int i = 0; i < doneReading2.size(); i++) {
+			countsArrayList.add(doneReading2.get(i));
+		}
+        
+        System.out.println("done reading files");
+        
+        // 'labels' is the exon labels, / column names
+        System.out.print("generating counts matrix. \t");
+        ArrayList<String> labels = new ArrayList<>();
+        DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(0), true, "\\t", "@");
+        for(int i = 0; i < countsDF.nrow(); i++) {
+        	labels.add(countsDF.get("CONTIG", i) + "_" + countsDF.get("START", i) + "_" + countsDF.get("END", i));
+        }
+        System.out.println("done generating counts matrix");
+
+        // for sanity checking, number should all appropriately match
+        System.out.println("sampleNames.size()\t" + sampleNames.size());
+        System.out.println("countsArrayList.size()\t" +  countsArrayList.size());
+        System.out.println("labels.size()\t" + labels.size());
+        System.out.println("writing counts matrix");
+
+		File file = new File(OUTPUT_PATH);
+        BufferedWriter output = new BufferedWriter(new FileWriter(file));
+		
+		for(int i = 0; i < labels.size(); i++) {
+			output.write(labels.get(i));
+			if(i != labels.size()-1) {
+				output.write("\t");	
+			}
+		} 
+		output.write("\n");
+		
+		if(countsArrayList.size() != sampleNames.size()) {
+			System.out.println("error 51");
+		}
+		
+		// written in such a way as to be readable in R, adding rownames for the sample ID
+		for(int i = 0; i < sampleNames.size(); i++) {
+			StringBuilder line = new StringBuilder();
+			line.append(sampleNames.get(i) + "\t");
+			line.append(countsArrayList.get(i));
+			if(i != sampleNames.size()-1) {
+				line.append("\n");
+			}
+			output.write(line.toString());
+		}
+		output.close();
+	}
+	
+	
+	/**
 	 * calls getCountsMatrixParallel() without specifying a regex
 	 * @param sourceFolder
 	 * @param OUTPUT_PATH
@@ -548,6 +748,7 @@ public class gCNV_2_00 {
 	 * @param countsRegex - the regex suffix to identify counts files
 	 * @throws IOException
 	 * @throws InterruptedException 
+	 * @deprecated please use V3
 	 */
 	public void getCountsMatrixParallel(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
 		ArrayList<Path> barcodeCountsPaths = new ArrayList<>();
@@ -587,6 +788,7 @@ public class gCNV_2_00 {
 							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
 							doneReading.put(currentFile, countsDF.get("COUNT"));
 							progressPercentage(totalNFiles - toRead.size(), totalNFiles, barcodeCountsFiles.get(currentFile));
+							countsDF = null;
 						} catch (IOException e) {
 							e.printStackTrace();
 						}
