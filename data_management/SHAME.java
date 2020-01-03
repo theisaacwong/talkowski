@@ -25,8 +25,8 @@ public class SHAME {
 	
 	public static void main(String[] args) throws IOException {
 
-		String wd = "C:/Users/iwong/Documents/MGH/scripts/";
-		args = new String[] {wd+"blacklist.txt", wd+"personalDirectories.txt", wd+"ncdutmpout.txt.tsv", wd+"shameout.txt"};
+//		/String wd = "C:/Users/iwong/Documents/MGH/scripts/";
+		//args = new String[] {wd+"blacklist.txt", wd+"personalDirectories.txt", wd+"ncdutmpout.txt.tsv", wd+"shameout.txt"};
 		System.out.println("Java version " + System.getProperty("java.version"));
 		if(args.length == 4) {
 			// shame(String pathToBlackList, String pathToUserDirList, String pathToNcduParseFile, String outputPath) 
@@ -160,11 +160,11 @@ public class SHAME {
 		String line = "";
 		line = sc.nextLine();
 		String[] fields = line.split("\\t");
-//		int userFieldIndex = 3;
+		int userFieldIndex = 3;
 		int asizeFieldIndex = 1;
 		for(int i = 0; i < fields.length; i++) {
 			if(fields[i].equalsIgnoreCase(USER_FIELD_NAME)) {
-//				userFieldIndex = i;
+				userFieldIndex = i;
 			}
 			if(fields[i].equalsIgnoreCase(ASIZE_FIELD_NAME)) {
 				asizeFieldIndex = i;
@@ -175,7 +175,7 @@ public class SHAME {
 
 			String[] linee = line.split("\\t");
 			Long asize = Long.parseLong(linee[asizeFieldIndex]);
-//			String user = linee[userFieldIndex];
+			String user = linee[userFieldIndex];
 			String filePath = linee[0];
 
 			/*
@@ -185,13 +185,12 @@ public class SHAME {
 			 * 
 			 */
 
-			String currentUser = "";
+			String currentUser = user;
 			String directoryName = filePath.split("/")[3]; // /data/talkowski/iwong/some_file.txt TODO: test
 			if(directoryToUser.containsKey(directoryName) == false) { // only change from measureUserDirectories
 				if(blacklist.containsKey(filePath) && (blacklist.get(filePath).equals(ARCHIVE) || blacklist.get(filePath).equals(IMPORTANT)) ) {
 					continue;
 				} 
-				currentUser = directoryToUser.get(directoryName);
 				if(userToSize.containsKey(currentUser)==false) userToSize.put(currentUser, 0L);
 				userToSize.put(currentUser, userToSize.get(currentUser) + asize);
 			} 
