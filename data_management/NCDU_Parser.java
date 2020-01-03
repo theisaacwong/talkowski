@@ -11,9 +11,11 @@ package data_management;
  * 
  */
 
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -27,6 +29,7 @@ import java.util.regex.Pattern;
 public class NCDU_Parser {
 
 	public static HashMap<String, String> errorMessages = new HashMap<String, String>();
+	public static final String HEADER = "file\tasize\tdsize\tuser\thuman_readable\tfile_extension\n";
 
 	public static void main(String[] args) throws IOException {
 		//args = new String[] {"C:/Users/iwong/Documents/MGH/temp/ncdu.txt", "C:/Users/iwong/Documents/MGH/temp/ncdu_"};
@@ -63,6 +66,23 @@ public class NCDU_Parser {
 		int len = filee.length;
 		return filee[len - 1];
 	}
+	
+	public static HashMap<String, String> getUIDtoNameMap(String pathToPasswd) throws FileNotFoundException{
+		HashMap<String, String> uidToName = new HashMap<>();
+		FileInputStream inputStream = null;
+		Scanner sc = null;
+
+		inputStream = new FileInputStream(pathToPasswd);
+		sc = new Scanner(inputStream, "UTF-8");
+		String line = "";
+		while (sc.hasNextLine()) {
+			try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
+			String[] linee = line.split(":");
+			uidToName.put(linee[2], linee[0]);
+		}
+		sc.close();
+		return uidToName;
+	}
 
 	public static void ncduParser(String INPUT_PATH, String OUTPUT_BASE) throws IOException {
 		long start = System.currentTimeMillis();
@@ -87,7 +107,7 @@ public class NCDU_Parser {
 
 		Stack<String> filePaths = new Stack<String>();
 
-		output.write("file\tasize\tdsize\thuman_readable\tfile_extension\n");
+		output.write(HEADER);
 
 		HashMap<Long, String> lineMap = new HashMap<Long, String>();
 		HashMap<Long, ArrayList<Long>> sortMap = new HashMap<Long, ArrayList<Long>>();
@@ -97,9 +117,12 @@ public class NCDU_Parser {
 		Pattern dp = Pattern.compile("(?<=dsize\":)\\d+");
 		Pattern np = Pattern.compile("(?<=name\":\").+?(?=\")");
 		Pattern ep = Pattern.compile("(?<=\\.).*");
-
+		Pattern up = Pattern.compile("(?<=uid\":)\\d+");
+		
 		int temp_1 = -1;
 
+		var uidToName = getUIDtoNameMap("/etc/passwd");
+		
 		/*
 		 * For each line
 		 * 		if line starts with '['
@@ -134,7 +157,11 @@ public class NCDU_Parser {
 				Matcher dm = dp.matcher(line); String dsize = dm.find() ? dm.group() : "-1";
 				Matcher nm = np.matcher(line); String name  = nm.find() ? nm.group() : "NA";
 				Matcher em = ep.matcher(name); String fileExtension = em.find() ? em.group() : "NA";
-
+				Matcher um = up.matcher(line); String uid = um.find() ? um.group() : "NA";
+				
+				uid = uidToName.containsKey(uid) ? uidToName.get(uid) : uid;
+				
+				
 				StringBuilder sb = new StringBuilder();
 				for (Object s : filePaths.toArray()) {
 					sb.append(s);
@@ -143,6 +170,7 @@ public class NCDU_Parser {
 				sb.append(name); 	sb.append("\t");
 				sb.append(asize); 	sb.append("\t");
 				sb.append(dsize);	sb.append("\t");
+				sb.append(uid);		sb.append("\t");
 				sb.append(humanReadableByteCount(asize));	sb.append("\t");
 				sb.append(fileExtension);	sb.append("\n");
 				String currPath = sb.toString();
@@ -186,7 +214,7 @@ public class NCDU_Parser {
 		file = new File(OUTPUT_BASE + "_sorted.tsv");
 		output = new BufferedWriter(new FileWriter(file));
 
-		output.write("file\tasize\tdsize\thuman_readable\tfile_extension\n");
+		output.write(HEADER);
 		ArrayList<Long> sortIndex = new ArrayList<>(sortMap.keySet());
 		Collections.sort(sortIndex, Collections.reverseOrder());
 
@@ -208,7 +236,7 @@ public class NCDU_Parser {
 		output = null;
 		file = new File(OUTPUT_BASE + "_sorted_duplicates.tsv");
 		output = new BufferedWriter(new FileWriter(file));
-		output.write("file\tasize\tdsize\thuman_readable\tfile_extension\n");
+		output.write(HEADER);
 
 		// for each file size bucket/bin observed
 		for(Long si : sortIndex) {
