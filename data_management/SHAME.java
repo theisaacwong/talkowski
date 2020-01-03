@@ -1,7 +1,11 @@
 package data_management;
 
+import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -18,6 +22,21 @@ public class SHAME {
 	public static final String USER_FIELD_NAME = "user";
 	public static final String ASIZE_FIELD_NAME = "asize";
 
+	
+	public static void main(String[] args) throws IOException {
+
+		String wd = "C:/Users/iwong/Documents/MGH/scripts/";
+		args = new String[] {wd+"blacklist.txt", wd+"personalDirectories.txt", wd+"ncdutmpout.txt.tsv", wd+"shameout.txt"};
+		System.out.println("Java version " + System.getProperty("java.version"));
+		if(args.length == 4) {
+			// shame(String pathToBlackList, String pathToUserDirList, String pathToNcduParseFile, String outputPath) 
+			shame(args[0], args[1], args[2], args[3]);
+		}
+		else {
+			System.out.println("args\n1: pathToBlackList\n2: pathToUserDirLst\n3: pathToNcduParseFile\n4: outputPath");
+		}
+	}
+	
 	public static HashMap<String, String> getBlacklist(String pathToBlacklist) throws FileNotFoundException {
 		HashMap<String, String> fileToClassification = new HashMap<>();
 		FileInputStream inputStream = null;
@@ -28,7 +47,6 @@ public class SHAME {
 		String line = "";
 		while (sc.hasNextLine()) {
 			try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
-			if(line.charAt(0) == '#') {continue;}
 
 			String[] linee = line.split("\\t");
 			fileToClassification.put(linee[1], linee[0]);
@@ -74,7 +92,6 @@ public class SHAME {
 		}
 		while (sc.hasNextLine()) {
 			try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
-			if(line.charAt(0) == '#') {continue;}
 
 			String[] linee = line.split("\\t");
 			userToSize.put(linee[userFieldIndex], 0L);
@@ -93,11 +110,11 @@ public class SHAME {
 		String line = "";
 		line = sc.nextLine();
 		String[] fields = line.split("\\t");
-		int userFieldIndex = 3;
+//		int userFieldIndex = 3;
 		int asizeFieldIndex = 1;
 		for(int i = 0; i < fields.length; i++) {
 			if(fields[i].equalsIgnoreCase(USER_FIELD_NAME)) {
-				userFieldIndex = i;
+//				userFieldIndex = i;
 			}
 			if(fields[i].equalsIgnoreCase(ASIZE_FIELD_NAME)) {
 				asizeFieldIndex = i;
@@ -105,11 +122,10 @@ public class SHAME {
 		}
 		while (sc.hasNextLine()) {
 			try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
-			if(line.charAt(0) == '#') {continue;}
 
 			String[] linee = line.split("\\t");
 			Long asize = Long.parseLong(linee[asizeFieldIndex]);
-			String user = linee[userFieldIndex];
+//			String user = linee[userFieldIndex];
 			String filePath = linee[0];
 
 			/*
@@ -120,12 +136,13 @@ public class SHAME {
 			 */
 
 			String currentUser = "";
-			String directoryName = filePath.split("/")[2]; // /data/talkowski/iwong/some_file.txt TODO: test
+			String directoryName = filePath.split("/")[3]; // /data/talkowski/iwong/some_file.txt TODO: test
 			if(directoryToUser.containsKey(directoryName)) {
 				if(blacklist.containsKey(filePath) && (blacklist.get(filePath).equals(ARCHIVE) || blacklist.get(filePath).equals(IMPORTANT)) ) {
 					continue;
 				} 
 				currentUser = directoryToUser.get(directoryName);
+				if(userToSize.containsKey(currentUser)==false) userToSize.put(currentUser, 0L);
 				userToSize.put(currentUser, userToSize.get(currentUser) + asize);
 			} 
 
@@ -143,11 +160,11 @@ public class SHAME {
 		String line = "";
 		line = sc.nextLine();
 		String[] fields = line.split("\\t");
-		int userFieldIndex = 3;
+//		int userFieldIndex = 3;
 		int asizeFieldIndex = 1;
 		for(int i = 0; i < fields.length; i++) {
 			if(fields[i].equalsIgnoreCase(USER_FIELD_NAME)) {
-				userFieldIndex = i;
+//				userFieldIndex = i;
 			}
 			if(fields[i].equalsIgnoreCase(ASIZE_FIELD_NAME)) {
 				asizeFieldIndex = i;
@@ -155,11 +172,10 @@ public class SHAME {
 		}
 		while (sc.hasNextLine()) {
 			try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
-			if(line.charAt(0) == '#') {continue;}
 
 			String[] linee = line.split("\\t");
 			Long asize = Long.parseLong(linee[asizeFieldIndex]);
-			String user = linee[userFieldIndex];
+//			String user = linee[userFieldIndex];
 			String filePath = linee[0];
 
 			/*
@@ -170,12 +186,13 @@ public class SHAME {
 			 */
 
 			String currentUser = "";
-			String directoryName = filePath.split("/")[2]; // /data/talkowski/iwong/some_file.txt TODO: test
+			String directoryName = filePath.split("/")[3]; // /data/talkowski/iwong/some_file.txt TODO: test
 			if(directoryToUser.containsKey(directoryName) == false) { // only change from measureUserDirectories
 				if(blacklist.containsKey(filePath) && (blacklist.get(filePath).equals(ARCHIVE) || blacklist.get(filePath).equals(IMPORTANT)) ) {
 					continue;
 				} 
 				currentUser = directoryToUser.get(directoryName);
+				if(userToSize.containsKey(currentUser)==false) userToSize.put(currentUser, 0L);
 				userToSize.put(currentUser, userToSize.get(currentUser) + asize);
 			} 
 
@@ -185,7 +202,7 @@ public class SHAME {
 
 
 
-	public static void shame(String pathToBlackList, String pathToUserDirList, String pathToNcduParseFile) throws FileNotFoundException {
+	public static void shame(String pathToBlackList, String pathToUserDirList, String pathToNcduParseFile, String outputPath) throws IOException {
 		HashMap<String, String> blacklist = getBlacklist(pathToBlackList);
 		HashMap<String, String> userDirectories = getUserDirectories(pathToUserDirList);
 		HashMap<String, Long> userToSize = createUserToSize(pathToNcduParseFile);
@@ -198,18 +215,21 @@ public class SHAME {
 
 		// print sorted users
 
-
+		BufferedWriter output = null;
+		File file = new File(outputPath);
+		output = new BufferedWriter(new FileWriter(file));
+		
+		
 		// https://www.geeksforgeeks.org/sorting-a-hashmap-according-to-values/
 		Map<String, Long> hm1 = sortByValue(userToSize); 
 
 		// print the sorted hashmap 
 		for (Map.Entry<String, Long> en : hm1.entrySet()) { 
-			System.out.println("Key = " + en.getKey() +  
-					", Value = " + en.getValue()); 
+			//System.out.println("Key = " + en.getKey() +  ", Value = " + en.getValue()); 
+			output.write(en.getKey() + "\t" + humanReadableByteCount(en.getValue()) + "\n");
 		} 
-
-
-
+		
+		output.close();
 	}
 
 	// function to sort hashmap by values 
@@ -236,6 +256,31 @@ public class SHAME {
 		} 
 		return temp; 
 	} 
+	
+	/*
+	 * https://programming.guide/java/formatting-byte-size-to-human-readable-format.html
+	 * https://stackoverflow.com/questions/3758606/how-to-convert-byte-size-into-human-readable-format-in-java
+	 */
+	public static String humanReadableByteCount(long bytes) {
+		if (bytes < 1024) return bytes + " B";
+		int exp = (int) (Math.log(bytes) / 6.907755278982137);
+		char pre = "KMGTPE".charAt(exp-1);
+		return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
+	}
+	public static String humanReadableByteCount(String bytes_string) {
+		long bytes = Long.parseLong(bytes_string);
+		if (bytes < 1024) return bytes + " B";
+		int exp = (int) (Math.log(bytes) / 6.907755278982137);
+		char pre = "KMGTPE".charAt(exp-1);
+		return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
+	}
+
+	public static String getFileName(String str) {
+		String file = str.split("\t")[0];
+		String[] filee = file.split("/");
+		int len = filee.length;
+		return filee[len - 1];
+	}
 
 
 
