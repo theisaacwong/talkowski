@@ -7,12 +7,14 @@
 #BSUB -M 8000
 #BSUB -R rusage[mem=8000]
 #BSUB swp=8G
-#BSUB -sla miket_sc
 
 
 
-java -Xmx8g -jar DupCallerPipe.jar calcMD5 /data/talkowski/iwong/files/ncdu_cron_reports/tmp/dup_shard_${LSB_JOBINDEX} > /data/talkowski/iwong/files/ncdu_cron_reports/tmp/md5_dup_${LSB_JOBINDEX}
+source /etc/profile.d/00-modulepath.sh
+source /etc/profile.d/z00_lmod.sh
+module load Java/13.0.1
 
+java -Xmx6G -jar /data/talkowski/iwong/src/jars/DMTK.jar calcMD5 /data/talkowski/iwong/data_management/tmp/dup_shard_${LSB_JOBINDEX} > /data/talkowski/iwong/data_management/tmp/md5_dup_${LSB_JOBINDEX}
 
 
 
