@@ -45,7 +45,7 @@ public class gCNV_2_00 {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	
+	public static final String VERSION = "Version 2.3 January 9, 2020";
 	
 	public gCNV_2_00(String[] args) {
 		initializationArgs = args;
@@ -56,11 +56,12 @@ public class gCNV_2_00 {
 		
 		gCNV_2_00 g = new gCNV_2_00(args);
 		System.out.println(g.toString());
+		System.out.println(VERSION);
 		System.out.println("Java version: " + System.getProperty("java.version"));
 		System.out.println("Heap Size: " + getHeapSize());
 		
 		System.out.println();
-		if(args[0].contains("-help") || args[0].contains("-h")) {
+		if(args.length==0 || args[0].contains("-help") || args[0].contains("-h")) {
 			System.out.println("java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}");
 			System.out.println();
 				System.out.println("\tgetBarcodeCounts [entityPath] [working-directory] {counts-field-name}");
@@ -568,9 +569,10 @@ public class gCNV_2_00 {
 					File file = new File(OUTPUT_PATH + "_" + Thread.currentThread().getId());
 			        BufferedWriter output = null;
 					try {output = new BufferedWriter(new FileWriter(file));} catch (IOException e1) {e1.printStackTrace();}
-			        ArrayList<ArrayList<String>> countsBuffer = new ArrayList<>();
+			        
+					HashMap<String, String> doneReading = new HashMap<>(); // map of sample name to line string
+					
 			        int bufferCounter = 0;
-//			        int BUFFER_SIZE = 20;
 			        
 			        ArrayList<String> labels = new ArrayList<>();
 			        DataFrame labelsDF = null;
@@ -591,26 +593,21 @@ public class gCNV_2_00 {
 					while(toRead.size() > 0) {
 						int currentFile = toRead.remove(0);
 						try {
-							
 							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
-							countsBuffer.add(countsDF.get("COUNT")); // arraylist.copyof() and then remofe counutsDF??????
+							doneReading.put(sampleNames.get(currentFile), String.join("\t", countsDF.get("COUNT")));
 							progressPercentage(totalNFiles - toRead.size(), totalNFiles, barcodeCountsFiles.get(currentFile));
+							countsDF = null; // java gc is a fickle mistress
 							
-							if(bufferCounter == BUFFER_SIZE) {
+							if(bufferCounter >= BUFFER_SIZE) {
 								StringBuilder line = new StringBuilder();
-								line.append(sampleNames.get(currentFile));
-								for(int i = 0; i < countsBuffer.size(); i++) {
-									for(int k = 0; k < countsBuffer.get(i).size(); k++) {
-										line.append(countsBuffer.get(i).get(k));
-										if(k != countsBuffer.get(i).size()) {
-											line.append("\t");
-										}
-									}
+								for(String snKey : doneReading.keySet()) {
+									line.append(snKey); // sample name key
+									line.append("\t");
+									line.append(doneReading.get(snKey));
 									line.append("\n");
 								}
 								output.write(line.toString());
-								
-								countsBuffer = new ArrayList<>();
+								doneReading = new HashMap<>();
 								bufferCounter = 0;
 							} else {
 								bufferCounter++;
@@ -620,17 +617,19 @@ public class gCNV_2_00 {
 							e.printStackTrace();
 						}
 					}
+					
+					// flush remaining buffer
 					StringBuilder line = new StringBuilder();
-					for(int i = 0; i < countsBuffer.size(); i++) {
-						for(int k = 0; k < countsBuffer.get(i).size(); k++) {
-							line.append(countsBuffer.get(i).get(k));
-							if(k != countsBuffer.get(i).size()) {
-								line.append("\t");
-							}
-						}
+					for(String snKey : doneReading.keySet()) {
+						line.append(snKey); // sample name key
+						line.append("\t");
+						line.append(doneReading.get(snKey));
 						line.append("\n");
 					}
-					try {output.write(line.toString());} catch (IOException e1) {e1.printStackTrace();}
+					try {output.write(line.toString());} catch (IOException e2) {e2.printStackTrace();}
+					doneReading = new HashMap<>();
+					bufferCounter = 0;
+			
 					try {output.close();} catch (IOException e) {e.printStackTrace();}
 				}
 			});
