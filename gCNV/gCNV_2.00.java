@@ -45,7 +45,7 @@ public class gCNV_2_00 {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "Version 2.3 January 9, 2020";
+	public static final String VERSION = "Version 2.3.2 January 10, 2020";
 	
 	public gCNV_2_00(String[] args) {
 		initializationArgs = args;
@@ -909,7 +909,7 @@ public class gCNV_2_00 {
 		DataFrame entityDF = new DataFrame(entityPath, true, "\\t", "@");
 		System.out.println(entityDF.nrow());
 		System.out.println(entityDF.columnMapping.toString());
-		for(int i = 3; i < entityDF.nrow(); i++) {
+		for(int i = 0; i < entityDF.nrow(); i++) {
 			String individualToDownload = entityDF.get("entity:sample_set_id", i);
 			String pathInGoogleBucket = entityDF.get(output_counts_barcode_regex, i).replaceAll("\\[|\\]|\"", "").replaceAll(",", " ");
 			String[] files = pathInGoogleBucket.split(" ");
