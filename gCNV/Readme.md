@@ -26,7 +26,7 @@
                 {prefix-regex} - prefix to trim from file name, eg 'genotyped-segments-'
                 {suffix-regex} - suffix used to identify VCF files, used also to trim from file name. eg '.vcf'
 
-      	svtkMatch [svtk_input] [svtk_output] [output_path]
+      svtkMatch [svtk_input] [svtk_output] [output_path]
 		Match up the gCNV meta data with the svtk bedcluster meta data and write to file
 		[svtk_input] - The BED file that was given to svtk bedcluster
 		[svtk_output] - The output file from svtk bedcluster
