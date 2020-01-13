@@ -73,7 +73,7 @@ STEP_03_OUTPUT=${TMP_DIR}${NAME}_step03_umi_extracted_unaligned.bam
 STEP_03_METRICS_01=${TMP_DIR}${NAME}_step03_est_lib_complex_metrics.txt
 java -Xmx${MEM} -jar "${FGBIO_PATH}" ExtractUmisFromBam --input=${STEP_02_OUTPUT} --output=${STEP_03_OUTPUT} --read-structure=${UMI1} ${UMI2} --molecular-index-tags=ZA ZB --single-tag=RX
 bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" EstimateLibraryComplexity -I ${STEP_03_OUTPUT} -O ${STEP_03_METRICS_01}
-[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_02_METRICS_01 ] && rm -rf $STEP_02_OUTPUT
+[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_02_METRICS_01 ] && [ -f $STEP_03_OUTPUT ] && rm -rf $STEP_02_OUTPUT
 
 
 echo "Step 4"; date
@@ -86,7 +86,7 @@ echo "Step 5"; date
 # Step 5 Mark Illumina Adapters
 STEP_05_OUTPUT=${TMP_DIR}${NAME}_step05_markAdapt.ubam
 java "${JAVA_ARGS[@]}" "${PICARD_PATH}" MarkIlluminaAdapters -I ${STEP_04_OUTPUT} -O ${STEP_05_OUTPUT} -M ${STEP_05_OUTPUT}_MarkAdaptMetrics.txt
-[ $DELETE_INTERMEDIATE_FILES == true ] && rm -rf $STEP_04_OUTPUT
+[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_05_OUTPUT ] && rm -rf $STEP_04_OUTPUT
 
 
 echo "Step 6"; date
@@ -95,15 +95,15 @@ STEP_06_OUTPUT_01=${TMP_DIR}${NAME}_step06_R1.fastq
 STEP_06_OUTPUT_02=${TMP_DIR}${NAME}_step06_R2.fastq
 06_R2.fastq
 java "${JAVA_ARGS[@]}" "${PICARD_PATH}" SamToFastq -I ${STEP_05_OUTPUT} -CLIPPING_ATTRIBUTE XT -CLIPPING_ACTION X -CLIPPING_MIN_LENGTH 36 -INCLUDE_NON_PF_READS true -F ${STEP_06_OUTPUT_01} -F2 ${STEP_06_OUTPUT_02}
-[ $DELETE_INTERMEDIATE_FILES == true ] && rm -rf $STEP_05_OUTPUT
+[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_06_OUTPUT_01 ] && [ -f $STEP_06_OUTPUT_02 ] && rm -rf $STEP_05_OUTPUT
 
 
 echo "Step 7"; date
 # Step 7, map fastq 
 STEP_07_OUTPUT=${TMP_DIR}${NAME}_step07_mapped.sam
 bwa mem -t ${NT} ${REF} ${STEP_06_OUTPUT_01} ${STEP_06_OUTPUT_02} > ${STEP_07_OUTPUT}
-[ $DELETE_INTERMEDIATE_FILES == true ] && rm -rf $STEP_06_OUTPUT_01
-[ $DELETE_INTERMEDIATE_FILES == true ] && rm -rf $STEP_06_OUTPUT_02
+[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_07_OUTPUT ] && rm -rf $STEP_06_OUTPUT_01
+[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_07_OUTPUT ] && rm -rf $STEP_06_OUTPUT_02
 
 
 echo "Step 8"; date			
@@ -120,7 +120,7 @@ bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" MarkDuplicates -I
 bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" EstimateLibraryComplexity -I ${STEP_08_OUTPUT} -O ${STEP_08_METRICS_03}
 bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" CollectInsertSizeMetrics -I ${STEP_08_OUTPUT} -O ${STEP_08_METRICS_04} -H ${STEP_08_METRICS_05}
 bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" CollectHsMetrics -I ${STEP_08_OUTPUT} -O ${STEP_08_METRICS_06} -R ${REF} -BAIT_INTERVALS ${BAIT} -TARGET_INTERVALS ${BAIT}
-[ $DELETE_INTERMEDIATE_FILES == true ] && rm -rf $STEP_07_OUTPUT
+[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_08_OUTPUT ] && rm -rf $STEP_07_OUTPUT
 
 
 
@@ -142,7 +142,7 @@ STEP_10_OUTPUT=${TMP_DIR}${NAME}_step10_callDuplexConsensus.bam
 STEP_10_METRICS_01=${TMP_DIR}${NAME}_step10_est_lib_complex_metrics.txt
 java -Xmx${MEM} -jar "${FGBIO_PATH}" CallDuplexConsensusReads --input=${STEP_09_OUTPUT} --output=${STEP_10_OUTPUT} --error-rate-pre-umi=45 --error-rate-post-umi=30 --min-input-base-quality=10 --threads=${NT} --min-reads=0
 bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" EstimateLibraryComplexity -I ${STEP_10_OUTPUT} -O ${STEP_10_METRICS_01}
-[ $DELETE_INTERMEDIATE_FILES == true ] && rm -rf $STEP_09_OUTPUT
+[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_10_OUTPUT ] && rm -rf $STEP_09_OUTPUT
 
 
 echo "Step 11"; date
@@ -158,8 +158,8 @@ echo "Step 12"; date
 # Step 12, map fastq 
 STEP_12_OUTPUT=${TMP_DIR}${NAME}_step12_mapped.sam
 bwa mem -t ${NT} ${REF} ${STEP_11_OUTPUT_01} ${STEP_11_OUTPUT_02} > ${STEP_12_OUTPUT}
-[ $DELETE_INTERMEDIATE_FILES == true ] && rm -rf $STEP_11_OUTPUT_01
-[ $DELETE_INTERMEDIATE_FILES == true ] && rm -rf $STEP_11_OUTPUT_02
+[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_12_OUTPUT ] && rm -rf $STEP_11_OUTPUT_01
+[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_12_OUTPUT ] && rm -rf $STEP_11_OUTPUT_02
 
 
 echo "Step 13"; date
@@ -176,7 +176,7 @@ bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" MarkDuplicates -I
 bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" EstimateLibraryComplexity -I ${STEP_13_OUTPUT} -O ${STEP_13_METRICS_03}
 bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" CollectInsertSizeMetrics -I ${STEP_13_OUTPUT} -O ${STEP_13_METRICS_04} -H ${STEP_13_METRICS_05}
 bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" CollectHsMetrics -I ${STEP_13_OUTPUT} -O ${STEP_13_METRICS_06} -R ${REF} -BAIT_INTERVALS ${BAIT} -TARGET_INTERVALS ${BAIT}
-[ $DELETE_INTERMEDIATE_FILES == true ] && rm -rf $STEP_12_OUTPUT
+[ $DELETE_INTERMEDIATE_FILES == true ] && [ -f $STEP_13_OUTPUT ] && rm -rf $STEP_12_OUTPUT
 
 
 
