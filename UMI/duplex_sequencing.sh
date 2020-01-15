@@ -193,9 +193,12 @@ echo "Step 15"; date
 STEP_15_OUTPUT=${TMP_DIR}${NAME}_step15_clipBam.bam
 STEP_15_METRICS_01=${TMP_DIR}${NAME}_step15_est_lib_complex_metrics.txt
 STEP_15_METRICS_02=${TMP_DIR}${NAME}_step15_hs_metrics.txt
+STEP_15_METRICS_03=${TMP_DIR}${NAME}_step15_CollectInsertSizeMetrics.txt
+STEP_15_METRICS_04=${TMP_DIR}${NAME}_step15_CollectInsertSizeMetrics.pdf
 java -Xmx${MEM} -jar "${FGBIO_PATH}" ClipBam --input=${STEP_14_OUTPUT} --output=${STEP_15_OUTPUT} --ref=${REF} --clipping-mode=Hard --clip-overlapping-reads=true
 bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" EstimateLibraryComplexity -I ${STEP_15_OUTPUT} -O ${STEP_15_METRICS_01}
 bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" CollectHsMetrics -I ${STEP_15_OUTPUT} -O ${STEP_15_METRICS_02} -R ${REF} -BAIT_INTERVALS ${BAIT} -TARGET_INTERVALS ${BAIT}
+bsub "${BSUB_ARGS[@]}" java "${JAVA_ARGS[@]}" "${PICARD_PATH}" CollectInsertSizeMetrics -I ${STEP_15_OUTPUT} -O ${STEP_15_METRICS_03} -H ${STEP_15_METRICS_04}
 
 
 date
