@@ -3,13 +3,38 @@ package gCNV;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Scanner;
+
+import com.univocity.parsers.tsv.TsvParser;
+import com.univocity.parsers.tsv.TsvParserSettings;
+
+/**
+ * 
+ * @author Isaac Wong
+ * December 2, 2019
+ * Massachusetts General Hospital
+ * Center for Genomic Medicine
+ * Talkowski Lab
+ * 
+ * This class is designed as a bare bones version of R's data.frame
+ * 
+ * Contact Information
+ * website: https://talkowski.mgh.harvard.edu/
+ * email: iwong@broadinstitute.org
+ * github: https://github.com/theisaacwong/
+ *
+ */
 
 public class DataFrame {
 	public HashMap<String, Integer> columnMapping;
@@ -120,20 +145,61 @@ public class DataFrame {
 			sb = new StringBuilder();
 		}
 		
-		for(int i = 0; i < this.nrow()-1; i++) {
+		for(int i = 0; i < this.nrow(); i++) {
 			output.write(String.join("\t", this.get(i)) + "\n");
 		}
-		output.write(String.join("\t", this.get(this.nrow()-1)) + "\n");		
 		System.out.println(this.nrow());
 		output.close();
 	}
 	
+	
+    public Reader getReader(String relativePath) throws UnsupportedEncodingException {
+    	try {
+			return new InputStreamReader(this.getClass().getResourceAsStream(relativePath), "UTF-8");
+		} catch (UnsupportedEncodingException e) {
+			throw new IllegalStateException("Unable to read input", e);
+		}
+    }
+    public Reader getFileReader(String absolutePath) throws UnsupportedEncodingException, FileNotFoundException {
+        return new InputStreamReader(new FileInputStream(new File(absolutePath)), "UTF-8");
+    }
 	/**
+	 * reads into memory the file at this object's path
+	 * https://www.univocity.com/pages/univocity_parsers_tutorial.html#introduction-to-univocity-parsers
+	 * @throws IOException
+	 */
+	public void parseFile() throws IOException {
+		TsvParserSettings settings = new TsvParserSettings();
+		settings.getFormat().setLineSeparator("\n");
+		settings.getFormat().setComment(comment_char.charAt(0));
+
+		// creates a TSV parser
+		TsvParser parser = new TsvParser(settings);
+
+		// parses all rows in one go.
+		List<String[]> allRows = parser.parseAll(getFileReader(FILE_PATH));
+		
+		if(header == true) {
+			this.fieldNames = allRows.get(0).clone(); // works as intended
+			for(int i = 0; i < allRows.get(0).length; i++) {
+				columnMapping.put(allRows.get(0).clone()[i], i);
+			}
+			allRows.remove(0);
+		}
+		for(int i = 0; i < allRows.size(); i++) {
+			df.add(allRows.get(i).clone());
+		}
+	}
+	
+	/**
+	 * while not technically deprecated, you should use the newer version. There is nothing wrong with this version, but the newer version uses univocity to parse the tsv rather than my homemade tsv parser
+	 * using external libraries is better because it offloads bug fixing on someone else
+	 * this version still works perfectly fine against my test cases and is sill usable
 	 * reads into memory the file at this object's path
 	 * https://stackoverflow.com/questions/1635764/string-parsing-in-java-with-delimiter-tab-t-using-split
 	 * @throws IOException
 	 */
-	public void parseFile() throws IOException {
+	public void parseFile_old() throws IOException {
 		FileInputStream inputStream = new FileInputStream(FILE_PATH);
 		Scanner sc = new Scanner(inputStream, "UTF-8");
 
@@ -159,8 +225,12 @@ public class DataFrame {
 		
 		while (sc.hasNextLine()) {
 			try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
-			if(line.indexOf(comment_char) == 0) {continue;}
 			df.add(line.split(delimiter, -1));
+			for(int i = 0; i < df.get(df.size()-1).length; i++) {
+				if(df.get(df.size()-1)[i].equals("")) {
+					df.get(df.size()-1)[i] = "0";
+				}
+			}
 		}
 		inputStream.close();
 		sc.close();	
