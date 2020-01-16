@@ -3,38 +3,36 @@ title: "gCNV_Pipeline"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-```{r}
-library("stringr")
-```
-
 To start, download the entity file from firecloud 
 ```{r}
-wd <- "C:/Users/iwong/Documents/MGH/gCNV_full_pipe/"
+wd <- "C:/Users/iwong/Documents/"
+jar_path <- "C:/Users/iwong/Documents/MGH/scripts/gCNV_helper.jar"
 
-system2("java", paste0("-jar ", wd, "gCNV_helper.jar --help"))
-system2("java", paste0("-jar ", wd, "gCNV_helper.jar -getBarcodeCounts ", wd, "sample_set_entity.tsv ", wd))
-system2("java", paste0("-jar ", wd, "gCNV_helper.jar -getCountsMatrixParallel  ", wd, " ", wd, "counts_matrix.tsv"))
+system2("java", sprintf("-Xmx16G -jar %s --help", jar_path))
+system2("java", sprintf("-Xmx16G -jar %s getBarcodeCounts %ssample_set_entity.tsv %s counts_barcode", jar_path, wd, wd ))
+system2("java", sprintf("-Xmx16G -jar %s getCountsMatrix %s %scounts_matrix.tsv .barcode.counts.tsv", jar_path, wd, wd ))
 ```
 
 ```{r}
+library("rgl")
+library("factoextra")
 counts_df <- read.table(paste0(wd, "counts_matrix.tsv"), sep="\t", stringsAsFactors = FALSE, header=TRUE, fill=TRUE)
+save(counts_df, file = paste0(wd, "conuts_matrix.rda"))
 
+counts_df[is.na(counts_df)] <- 0
 counts_matrix <- t(as.matrix(counts_df))
 indexes_to_remove <- rep(FALSE, nrow(counts_matrix))
 rown <- rownames(counts_matrix)
 chr <- do.call(rbind, str_split(rown, "_"))[,1]
-bool_y <- chr == "chrY"
-bool_x <- chr == "chrX"
+bool_y <- chr == "X" | chr == "chrX" | chr == "ChrX"
+bool_x <- chr == "Y" | chr == "chrY" | chr == "ChrY"
 indexes_to_remove[bool_y | bool_x] <- TRUE
 mydata_filtered <- counts_matrix[!indexes_to_remove,]
-mydataNormalized <- t(t(mydata_filtered)/colSums(mydata_filtered))
+mydataNormalized <- t(t(mydata_filtered)/colSums(mydata_filtered, na.rm = TRUE))
 
 pca <- prcomp(t(mydataNormalized), rank = 7)
-plot3d(pca$x[,1:3])
+fviz_eig(pca)
+plot3d(pca$x[,c(1,2,3)])
 save(pca, file=paste0(wd, "pca.rda"))
 x <- pca$x
 save(x, file=paste0(wd, "x.rda"))
@@ -50,7 +48,7 @@ library("clusterSim")
 library("cluster")
 library("rgl")
 library("clValid")
-wd <- "C:/Users/iwong/Documents/MGH/gCNV_full_pipe/"
+wd <- "C:/Users/iwong/Documents/MGH/CCDG/sample_set_20200110/"
 load(paste0(wd, "x.rda"))
 
 pca_loadings <- x
@@ -65,7 +63,7 @@ results$silhouette <- 0
 results$dunn <- 0
 for(i in 1:nrow(results)){
   print(i)
-  dist_mat <- dist(pca_loadings[,1:3], method=results$distance[i], p=ifelse(results$distance[i]=="minkowski", mink_p, 2)) 
+  dist_mat <- dist(pca_loadings[,1:5], method=results$distance[i], p=ifelse(results$distance[i]=="minkowski", mink_p, 2)) 
   hclust <- hclust(dist_mat, method=results$agglomeration[i]) 
   cut_avg <- cutree(hclust, k=n_clusters)
   
@@ -81,16 +79,21 @@ rval$dunn <- order(results$dunn, decreasing = TRUE)
 rval$silhouette <- order(results$silhouette, decreasing = TRUE)
 rval$sum <- rval$db + rval$dunn + rval$silhouette
 rval <- rval[order(rval$sum),]
+write.table(rval , paste0(wd, "rval_", n_clusters, ".tsv"), sep="\t", quote = FALSE, col.names = TRUE, row.names = FALSE)
+
+
 
 n <- n_clusters
-dist_mat <- dist(x[,1:3], method=rval$distance[1]) 
-hclust <- hclust(dist_mat, method=rval$agglomeration[1]) 
+dist_mat <- dist(x[,1:3], method=rval$distance[10]) 
+hclust <- hclust(dist_mat, method=rval$agglomeration[10]) 
 cut_avg <- cutree(hclust, k=n)
+sorted_clusters <- sapply(unname(cut_avg), function(x) which(x == names(srt(cut_avg))))
 cols <- rainbow(n)[sample(1:n, n)]
-plot3d(x[,1:3], col=cols[cut_avg])
+plot3d(x[,1:3], col=cols[sorted_clusters])
 
 set.seed(123)
-clusters <- paste0("cluster_", LETTERS[cut_avg])
+clusters <- paste0("cluster_", sorted_clusters)
+
 
 n_clusters <- length(unique(clusters))
 target_size <- 200
@@ -111,9 +114,26 @@ for(i in 1:(length(too_big))){
   which_replace <- which(new_cluster_labels == too_big[i])
   new_cluster_labels[which_replace][1:200] <- paste0(too_big[i], "_1")
   new_cluster_labels[which_replace][201:n_replace] <- paste0(too_big[i], "_2")
-  
 }
 ```
+
+If you have a singular large cluster and want to do a separate PCA on it 
+```{r}
+# get the biggest cluster # n_clusters <- 25
+big_cluster <- names(srt(clusters)[1])
+big_cluster_sample_names <- row.names(x)[clusters %in% big_cluster]
+second_pca_samples <- mydata_filtered[,colnames(mydata_filtered) %in% big_cluster_sample_names]
+mydataNormalized_2nd <- t(t(second_pca_samples)/colSums(second_pca_samples, na.rm = TRUE))
+
+pca_2 <- prcomp(t(mydataNormalized_2nd), rank = 7)
+fviz_eig(pca_2)
+plot3d(pca_2$x[,c(1,2,3)])
+save(pca_2, file=paste0(wd, "pca_2.rda"))
+x_2 <- pca_2$x
+save(x_2, file=paste0(wd, "x_2.rda"))
+```
+
+
 
 #3d rotate
 ```{r}
@@ -125,10 +145,10 @@ if (!rgl.useNULL())
 ```
 
 ```{r}
-system2("java", paste0("-jar ", wd, "gCNV_helper.jar -downloadSegmentsVCFs ", wd, "sample_set_entity.tsv ", wd))
-system2("java", paste0("-jar ", wd, "gCNV_helper.jar -convertVCFsToBEDFormat ", wd, " ", wd, "svtk_input.bed"))
+system2("java", paste0("-jar ", wd, "gCNV_helper.jar downloadSegmentsVCFs ", wd, "sample_set_entity.tsv ", wd))
+system2("java", paste0("-jar ", wd, "gCNV_helper.jar convertVCFsToBEDFormat ", wd, " ", wd, "svtk_input.bed"))
 system2("svtk", paste0("bedcluster ", wd, "svtk_input.bed ", wd, "svtk_output.bed"))
-system2("java", paste0("-jar ", wd, "gCNV_helper.jar -svtkMatch ", wd, "svtk_input.bed ", wd, "svtk_output.bed ", wd, "clustered.bed"))
+system2("java", paste0("-jar ", wd, "gCNV_helper.jar svtkMatch ", wd, "svtk_input.bed ", wd, "svtk_output.bed ", wd, "clustered.bed"))
 ```
 
 
