@@ -1,4 +1,4 @@
-        Version: 2.3.5
+        Version: 2.7
 
         java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}
 
