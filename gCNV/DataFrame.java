@@ -165,10 +165,11 @@ public class DataFrame {
     }
 	/**
 	 * reads into memory the file at this object's path
+	 * has errors with the large formats of fireloud's manifest file
 	 * https://www.univocity.com/pages/univocity_parsers_tutorial.html#introduction-to-univocity-parsers
 	 * @throws IOException
 	 */
-	public void parseFile() throws IOException {
+	public void parseFileU() throws IOException {
 		TsvParserSettings settings = new TsvParserSettings();
 		settings.getFormat().setLineSeparator("\n");
 		settings.getFormat().setComment(comment_char.charAt(0));
@@ -196,10 +197,12 @@ public class DataFrame {
 	 * using external libraries is better because it offloads bug fixing on someone else
 	 * this version still works perfectly fine against my test cases and is sill usable
 	 * reads into memory the file at this object's path
+	 * ***CORRECTION*** 
+	 * use this method, univocity has issues with firecloud's nonstandard tsv peculularities
 	 * https://stackoverflow.com/questions/1635764/string-parsing-in-java-with-delimiter-tab-t-using-split
 	 * @throws IOException
 	 */
-	public void parseFile_old() throws IOException {
+	public void parseFile() throws IOException {
 		FileInputStream inputStream = new FileInputStream(FILE_PATH);
 		Scanner sc = new Scanner(inputStream, "UTF-8");
 
