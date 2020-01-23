@@ -1,9 +1,13 @@
 package gCNV;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -18,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -45,7 +51,7 @@ public class gCNV_2_00 {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "Version 2.3.2 January 10, 2020";
+	public static final String VERSION = "2.7";
 	
 	public gCNV_2_00(String[] args) {
 		initializationArgs = args;
@@ -56,9 +62,11 @@ public class gCNV_2_00 {
 		
 		gCNV_2_00 g = new gCNV_2_00(args);
 		System.out.println(g.toString());
-		System.out.println(VERSION);
+		System.out.println("version " + VERSION);
+		try{g.checkVersion();} catch(Exception e) {}
 		System.out.println("Java version: " + System.getProperty("java.version"));
 		System.out.println("Heap Size: " + getHeapSize());
+		
 		
 		System.out.println();
 		if(args.length==0 || args[0].contains("-help") || args[0].contains("-h")) {
@@ -123,7 +131,7 @@ public class gCNV_2_00 {
 		} else if(args[0].equals("convertVCFsToBEDFormat")) {
 			if(args.length == 3) {
 				g.convertVCFsToBEDFormat(args[1], args[2]);
-			} else if(args.length == 4) {
+			} else if(args.length == 5) {
 				g.convertVCFsToBEDFormat(args[1], args[2], args[3], args[4]);
 			}
 		} else if(args[0].equals("svtkMatch")) {
@@ -139,6 +147,27 @@ public class gCNV_2_00 {
 		} 
 	}
 	
+	public void checkVersion() throws IOException {
+		//https://stackoverflow.com/questions/9489726/get-raw-text-from-html
+		URL u = new URL("https://raw.githubusercontent.com/theisaacwong/talkowski/master/gCNV/Readme.md");
+		URLConnection conn = u.openConnection();
+		conn.setReadTimeout(15000);
+		BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+		StringBuffer buffer = new StringBuffer();
+		String inputLine;
+		while ((inputLine = in.readLine()) != null) 
+		    buffer.append(inputLine);
+		in.close();
+		String line = buffer.toString();
+		Pattern versionPattern = Pattern.compile("(?<=Version: )\\d+.\\d+");
+		Matcher versionMatcher = versionPattern.matcher(line); 
+		String versionString = versionMatcher.find() ? versionMatcher.group() : "-1";
+		if(versionString.equals(VERSION)) {
+			System.out.println("(Most current version)");
+		} else {
+			System.out.println("Waring. You are currently running version " + VERSION + ". The most recent version is " + versionString + ". Updating is strongly recommended.");
+		}
+	}
 	
 	public void defrag(String match_output, String defrag_output) {
 		/*
@@ -460,7 +489,7 @@ public class gCNV_2_00 {
 			String pathInGoogleBucket = sampleSetEntity.get(segments_vcfs_columnName, i).replaceAll("\\[|\\]|\"", "").replaceAll(",", " ");
 			String[] files = pathInGoogleBucket.split(" ");
 			
-			if(files.length < 2) {continue;}
+			if(pathInGoogleBucket.trim().equals("") || (files.length==1 && files[0].trim().equals("")) || files.length==0) {continue;}
 			
 			String temp_suffix = "_files_to_download.txt";
 			
@@ -479,24 +508,10 @@ public class gCNV_2_00 {
 	        String wdUnix = wd.replace("C:", "/mnt/c");
 	        String pathToDownloadToUnix = wdUnix + individualToDownload;
 			
-	        downloadFiles(wdUnix + individualToDownload, pathToDownloadToUnix);
+	        downloadFiles(wdUnix + individualToDownload + temp_suffix, pathToDownloadToUnix);
 	        
 //	        //this is only tested on windows, and it works so far. ITS VERY DELICATE. 
-//	        // download vcfs
 	        String[] command;
-//	        if(System.getProperty("os.name").contains("Windows")) {
-//	        	String[] dosCommand = {"bash", "-c" ,"'cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
-//	        	command = dosCommand;
-//	        } else {
-//	        	String[] unixCommand = {"cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
-//	        	command = unixCommand;
-//	        }
-//	        System.out.println(String.join(" ", command));
-//			try {
-//		        new ProcessBuilder(command).inheritIO().start().waitFor();
-//		    } catch(IOException e) {
-//		        e.printStackTrace();
-//		    }
 			
 			// unzip vcfs, working as of 12/3/19
 	        if(System.getProperty("os.name").contains("Windows")) {
@@ -760,133 +775,6 @@ public class gCNV_2_00 {
 	
 	
 	/**
-	 * calls getCountsMatrixParallel() without specifying a regex
-	 * @param sourceFolder
-	 * @param OUTPUT_PATH
-	 * @throws IOException
-	 * @throws InterruptedException
-	 * @deprecated
-	 */
-	public void getCountsMatrixParallel(String sourceFolder, String OUTPUT_PATH) throws IOException, InterruptedException {
-		getCountsMatrixParallel(sourceFolder, OUTPUT_PATH, ".barcode.counts.tsv");
-	}
-	
-	/**
-	 * Reads in barcode counts files in parallel, and writes a counts matrix
-	 * @param sourceFolder - directory where files are located in, files can be in sub-directories. 
-	 * @param OUTPUT_PATH - the full output path where the matrix file will be written to
-	 * @param countsRegex - the regex suffix to identify counts files
-	 * @throws IOException
-	 * @throws InterruptedException 
-	 * @deprecated please use V3
-	 */
-	public void getCountsMatrixParallel(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
-		ArrayList<Path> barcodeCountsPaths = new ArrayList<>();
-		ArrayList<String> barcodeCountsFiles = new ArrayList<>();
-		ArrayList<String> sampleNames = new ArrayList<>();
-		
-		System.out.print("finding files.\t");
-        Path p = Paths.get(sourceFolder);
-        final int maxDepth = 10;
-        Stream<Path> matches = Files.find(p, maxDepth, (path, basicFileAttributes) -> String.valueOf(path).endsWith(countsRegex));
-        matches.filter(s->s.getFileName().toString().contains(countsRegex)).forEach(barcodeCountsPaths::add);
-        matches.close();
-        for(Path fp : barcodeCountsPaths) {
-        	barcodeCountsFiles.add(fp.toAbsolutePath().toString());
-        	sampleNames.add(fp.getFileName().toString().replaceAll(countsRegex, ""));
-        }
-        System.out.println("found " + sampleNames.size() + " files");
-        
-        System.out.println("reading files. \t");
-        
-        // toRead functions as a synchronized queue so each thread knows which file to read next
-        // each dataframe is then mapped to a unique index number so that the arraylist of dataframes
-        // can be assembled again in order even though each one is read out of order
-        List<Integer> toRead = Collections.synchronizedList(new ArrayList<Integer>());
-        Map<Integer, ArrayList<String>> doneReading = new ConcurrentHashMap<>();
-        for(int i = 0; i < sampleNames.size(); i++) {toRead.add(i);} 
-        int N_THREADS =  Runtime.getRuntime().availableProcessors();
-		ExecutorService exServer = Executors.newFixedThreadPool(N_THREADS);
-		int totalNFiles = toRead.size();
-		for (int i = 0; i < N_THREADS; i++) {
-			exServer.execute(new Runnable() {
-				@Override
-				public void run() {
-					while(toRead.size() > 0) {
-						int currentFile = toRead.remove(0);
-						try {
-							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
-							doneReading.put(currentFile, countsDF.get("COUNT"));
-							progressPercentage(totalNFiles - toRead.size(), totalNFiles, barcodeCountsFiles.get(currentFile));
-							countsDF = null;
-						} catch (IOException e) {
-							e.printStackTrace();
-						}
-					}
-				}
-			});
-		}
-		exServer.shutdown();
-		exServer.awaitTermination(6, TimeUnit.DAYS);
-
-		/*
-		 * I could easily-er do the following 
-		 * ArrayList<ArrayList<String>> countsArrayList = new ArrayList<>(doneReading.values());
-		 * but I want the samples written in read-order for consistency, will be a bit slower  
-		 */
-		ArrayList<ArrayList<String>> countsArrayList = new ArrayList<>();
-		for(int i = 0; i < doneReading.size(); i++) {
-			countsArrayList.add(doneReading.get(i));
-		}
-        
-        System.out.println("done reading files");
-        
-        // 'labels' is the exon labels, / column names
-        System.out.print("generating counts matrix. \t");
-        ArrayList<String> labels = new ArrayList<>();
-        DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(0), true, "\\t", "@");
-        for(int i = 0; i < countsDF.nrow(); i++) {
-        	labels.add(countsDF.get("CONTIG", i) + "_" + countsDF.get("START", i) + "_" + countsDF.get("END", i));
-        }
-        System.out.println("done generating counts matrix");
-
-        // for sanity checking, number should all appropriately match
-        System.out.println("sampleNames.size()\t" + sampleNames.size());
-        System.out.println("countsArrayList.size()\t" +  countsArrayList.size());
-        System.out.println("countsArrayList.get(0).size()\t" +  countsArrayList.get(0).size());
-        System.out.println("labels.size()\t" + labels.size());
-        System.out.println("writing counts matrix");
-
-		File file = new File(OUTPUT_PATH);
-        BufferedWriter output = new BufferedWriter(new FileWriter(file));
-		
-		for(int i = 0; i < labels.size(); i++) {
-			output.write(labels.get(i));
-			if(i != labels.size()-1) {
-				output.write("\t");	
-			}
-		} 
-		output.write("\n");
-		
-		// written in such a way as to be readable in R, adding rownames for the sample ID
-		for(int i = 0; i < sampleNames.size(); i++) {
-			StringBuilder line = new StringBuilder();
-			line.append(sampleNames.get(i) + "\t");
-			for(int k = 0; k < countsArrayList.get(i).size(); k++) {
-				line.append(countsArrayList.get(i).get(k));
-				if(k != countsArrayList.get(i).size()-1) {
-					line.append("\t");
-				}
-			}
-			if(i != sampleNames.size()-1) {
-				line.append("\n");
-			}
-			output.write(line.toString());
-		}
-		output.close();
-	}
-
-	/**
 	 * a wrapper for the full getBarcodeCounts() with generic args
 	 * @param entityPath
 	 * @param wd
@@ -935,23 +823,7 @@ public class gCNV_2_00 {
 	        String pathToDownloadToUnix = wdUnix + individualToDownload;
 			
 	        downloadFiles(wdUnix+individualToDownload+temp_suffix, pathToDownloadToUnix);
-	        
-//	        //this is only tested on windows, and it works so far. ITS VERY DELICATE. 
-//	        String[] command;
-//	        if(System.getProperty("os.name").contains("Windows")) {
-//	        	String[] dosCommand = {"bash", "-c" ,"'cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
-//	        	command = dosCommand;
-//	        } else {
-//	        	String[] unixCommand = {"cat", wdUnix+individualToDownload+temp_suffix, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
-//	        	command = unixCommand;
-//	        }
-//	        System.out.println(String.join(" ", command));
-//	        
-//			try {
-//		        new ProcessBuilder(command).inheritIO().start().waitFor();
-//		    } catch(IOException e) {
-//		        e.printStackTrace();
-//		    }
+
 		}
 	}
 	
@@ -967,6 +839,7 @@ public class gCNV_2_00 {
         	String[] dosCommand = {"bash", "-c" ,"'cat", filesFile, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix, "'"};
         	command = dosCommand;
         } else {
+        	System.out.println("WARNING: this download functionality has not been tested on macOS, please report any issues");
         	String[] unixCommand = {"cat", filesFile, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix};
         	command = unixCommand;
         }
