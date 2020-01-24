@@ -1,14 +1,34 @@
 ---
 title: "gCNV_Pipeline"
 output: html_document
-
+author: Isaac Wong
+version: 2.7
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
-The first step is to load all the libraries and some important functions
+This workflow is an attempt to provide instructions on running gCNV. Please let me know of any isses you run into or any processes you want improved/automated. Please ensure you have downloaded the most recent files from my github: https://github.com/theisaacwong/talkowski/tree/master/gCNV. You should be able to run the pipeline chunk by chunk.Basic GATK is below:
+```{}
+        gatk --java-options "-Xmx${command_mem_mb}m" CollectReadCounts \
+            -I ${cram} \
+            --read-index ${crai} \
+            -L ${intervals_barcode} \
+            --interval-merging-rule OVERLAPPING_ONLY \
+            --reference ${hg38_reference} \
+            --format TSV \
+            -O ${counts_barcode_filename}
+```
+
+
+#Step 0
+Call GATK's CollectReadcounts on bam files to get interval coverage. (https://gatk.broadinstitute.org/hc/en-us/articles/360036729331-CollectReadCounts).Bsst practice is to batch samples into groups of ~400 and run the WDL on each batch separately. 
+
+Here is a WDL to run it: https://portal.firecloud.org/?return=terra#methods/countingMethods/countingCrams/8/wdl
+
+
+To begin, load the required packages and some functions
 ```{r}
 library("stringr")
 library("rgl")
@@ -106,21 +126,87 @@ divideMultiple <- function(svtk){
 }
 ```
 
-To start, download the entity file from firecloud
+#Step 1
+Manally download the sample_set_entity.tsv file from firecloud. Set the wd (working directory) and jar_path variables to point to the working directory and the gCNV_helper.jar file. Best practices for directory structure:
+  
+  - Each time you download the zip file containing sample_set_entity.tsv and sample_set_membership.tsv, extract the zip file into a labeled directory, then change the wd to that directory. This will help with version control, file naming scheme, and pipeline reproducabiliy. In the eventuallity that you need to redo a step or trace previous steps, this is very helpful. 
+  -You wil eventuly need to download the manifest file mulitple times and will end up having different manifest files with the same name. Here is what my project directory looks like
+        gCNV_project_name/
+        |-- sample_set_entity_barcode_2020_01_01/
+        |   |-- countCramGrp_1/
+        |   |   |-- sample_0001.barcode.counts.tsv
+        |   |   |-- sample_0002.barcode.counts.tsv ...
+        |   |-- countCramGrp_2/
+        |   |   |-- sample_0501.barcode.counts.tsv
+        |   |   |-- sample_0502.barcode.counts.tsv ...
+        |   |-- countCramGrp_3/ ...
+        |   |-- sample_set_entity.tsv
+        |   |-- sample_set_membership.tsv
+        |   |-- pca.rda
+        |   |-- counts_matrix.tsv
+        |
+        |-- sample_set_entity_dataMunging_2020_01_07/
+        |   |-- sample_set_entity.tsv
+        |   |-- sample_set_membership.tsv
+        |   |-- new_labels.tsv
+        |
+        |-- sample_set_entity_clustering_2020_01_14/
+        |   |-- cluster_1_1_CASE/
+        |   |   |-- cluster_1_1_CASE.java.bed
+        |   |   |-- genotyped-segments-sample_0001.vcf
+        |   |   |-- genotyped-segments-sample_0001.vcf.gz
+        |   |   |-- genotyped-segments-sample_0002.vcf
+        |   |   |-- genotyped-segments-sample_0002.vcf.gz ...
+        |   |-- cluster_1_1_COHORT/
+        |   |   |-- cluster_1_1_COHORT.java.bed
+        |   |   |-- genotyped-segments-sample_0501.vcf
+        |   |   |-- genotyped-segments-sample_0501.vcf.gz
+        |   |   |-- genotyped-segments-sample_0502.vcf
+        |   |   |-- genotyped-segments-sample_0502.vcf.gz ...
+        |   |-- cluster_1_2_CASE/ ...
+        |   |-- sample_set_entity.tsv
+        |   |-- sample_set_membership.tsv
+        |   |-- clustered.bed
+        |   |-- gcnv_defragged.tsv
+        |   |-- svtk_input.tsv
+        |   |-- svtk_output.tsv
+        |   |-- out.rda
+        |   |-- final_callset_2020_01_14.tsv
+        |
+        |-- Plots
+            |-- QC_plot_01.pdf
+            |-- QC_plot_02.pdf
+            |-- QC_plot_03.pdf
+        
 ```{r}
 wd <- "/path/to/folder/"
 jar_path <- "/path/to/jar"
+system2("java", sprintf("-Xmx16G -jar %s --help", jar_path)) # you might need to change -Xmx to how much memory you have available on your device
+```
 
-system2("java", sprintf("-Xmx16G -jar %s --help", jar_path))
+#Step 2
+Download the barcode counts files to the wd. If the column name in your manifest file isn't "counts_barcode" then change code. This chunk just makes a system call to run the jar, which itself makes a system call to gsutil to download the files. It's turtles all the way down. 
+```{r}
+wd <- "/path/to/folder/"
 system2("java", sprintf("-Xmx16G -jar %s getBarcodeCounts %ssample_set_entity.tsv %s counts_barcode", jar_path, wd, wd ))
+```
+
+#Step 3
+Convert the barcode count files into a matrix file where rows are samples and columns are intervals
+```{r}
+wd <- "/path/to/folder/"
 system2("java", sprintf("-Xmx16G -jar %s getCountsMatrix %s %scounts_matrix.tsv .barcode.counts.tsv", jar_path, wd, wd ))
 ```
 
-perform data normalization and PCA
-remove x and y chromosomes
+#Step 4
+- perform data normalization
+- remove x and y chromosomes
+- perform PCA
+- save the R PCA object
+a scree plot for the PCA loadings is generated to help visualize the data. 
 ```{r}
+wd <- "/path/to/folder/"
 counts_df <- read.table(paste0(wd, "counts_matrix.tsv"), sep="\t", stringsAsFactors = FALSE, header=TRUE, fill=TRUE)
-save(counts_df, file = paste0(wd, "conuts_matrix.rda"))
 
 counts_df[is.na(counts_df)] <- 0
 counts_matrix <- t(as.matrix(counts_df))
@@ -141,11 +227,9 @@ x <- pca$x
 save(x, file=paste0(wd, "x.rda"))
 ```
 
-
-code for automating clustering, the rval data frame will store the results of each clustering metric. The final column is a ranking of all the metrics. By default, the first choice is chosen for clustering. However, you should manually check the data frame to see if any other combination has similar rankings in metrics to the top choice. The top choice is not necessarily the best. It is recomended to check at least the first three.  
-DB : smaller is better
-dunn : bigger is better
-sil closer to 1 is better
+#Step 5
+- Pseudo-automate clustering. 
+This step uses unsupervised clustering and metrics, so manual curration of final clustering is highly recomended. Typically, the best choice is among the top four recommended options. I am currently using only hclust. From previous experiences, it tends to work the best on average. Density based methods are currently in development. The rval data frame will store the results of each clustering metric. The final column is a ranking of all the metrics. By default, the first choice is chosen for clustering. However, you should manually check the data frame to see if any other combination has similar rankings in metrics to the top choice. The top choice is not necessarily the best. Change the 'n_clusters' variable based on the number of clusters you want. 
 ```{r}
 wd <- "/path/to/folder/"
 load(paste0(wd, "x.rda"))
@@ -179,8 +263,11 @@ rval$silhouette <- order(results$silhouette, decreasing = TRUE)
 rval$sum <- rval$db + rval$dunn + rval$silhouette
 rval <- rval[order(rval$sum),]
 write.table(rval , paste0(wd, "clustering_metrics", n_clusters, ".tsv"), sep="\t", quote = FALSE, col.names = TRUE, row.names = FALSE)
+```
 
-
+#Step 6
+Plot the clustering output. Change the 'choice' variable from 1 to 33 to cycle through the different clustering methods. (lower is "better")
+```{r}
 n <- n_clusters
 choice <- 1
 dist_mat <- dist(x[,1:3], method=rval$distance[choice]) 
@@ -191,18 +278,19 @@ cols <- rainbow(n)[sample(1:n, n)]
 plot3d(x[,1:3], col=cols[sorted_clusters])
 ```
 
-
+#Step 7
+Save a 3d animation of the plot
 3d rotate
 ```{r}
 open3d()
-plot3d(x[,1:3], col="grey")
+plot3d(x[,1:3], col=cols[sorted_clusters])
 if (!rgl.useNULL())
   play3d(spin3d(axis = c(1, 1, 1), rpm = 4), duration = 15, )
   movie3d( spin3d(rpm=3), duration=20,dir="C:/test/movie", clean=FALSE )
 ```
 
-
-Write cluster labels
+#Step 8
+Refine cluster labels. This step is intended for those wishing to run only cohort mode. Because cohort mode prefers clusters of size ~200 to build a model, this step will separate clusters into subclusters if the main cluster is too large. For example, if cluster_1 is has 800 samples, it will be split into cluster_1_1, cluster_1_2, cluster_1_3, and cluster_1_4, each with approximately 200 members. 
 ```{r}
 set.seed(123)
 clusters <- paste0("cluster_", sorted_clusters)
@@ -229,7 +317,7 @@ for(i in 1:(length(too_big))){
 }
 ```
 
-
+#Step 9
 If one cluster is exceedingly large, you may want to run pca on it separately and perform further clustering
 ```{r}
 # get the biggest cluster # n_clusters <- 25
@@ -247,13 +335,11 @@ save(x_2, file=paste0(wd, "x_2.rda"))
 ```
 
 
-Create CASE and COHORT labels, create a new manifest file. some steps of gCNV may trim characters from the file name or sample name, and will need to be matched up to the correct 
+#Step 10
+Create CASE and COHORT labels, create a new manifest file. some steps of gCNV may trim characters from the file name or sample name, and will need to be matched up to the correct. "updated_sample_file.tsv" will be the new manifest file. 
+##TODO: automate merging of smaller clusters 
 ```{r}
 set.seed(123)
-# merge the small clusters into the last one
-clusters[clusters!= "cluster_1" & clusters!="cluster_2"] <- "cluster_3"
-cluster_1_subgroups <- sample(1:3, length(which(clusters=="cluster_1")),replace = TRUE)
-clusters[clusters == "cluster_1"] <- paste0("cluster_1_", cluster_1_subgroups)
 
 for(i in unique(clusters)){
   indexes <- which(clusters==i) 
@@ -269,7 +355,7 @@ cols <- rainbow(length(unique(clusters)))
 plot3d(x[,1:3], col=cols[factor(clusters)])
 
 
-# need to re-match the ID's, you may need to change the regex
+# need to re-match the ID's, you may need to change the regex arg of grepl()
 entity <- read.table(paste0(wd, "sample_set_membership.tsv"), sep="\t", header = TRUE, stringsAsFactors = FALSE)
 actual_names <- sapply(df$sample, function(x) entity$sample[grepl(paste0(x, "_"), entity$sample)] )
 table(sapply(actual_names, length) ) # IF THESE ARE NOT ALL '1' YOU HAVE A PROBLEM
@@ -295,24 +381,39 @@ real_samples <- unname(sapply(samples_2, function(x) df3$entity.sample_id[grepl(
 df4 <- data.frame(barcode_counts=counts_barcode_2, entity.sample_id=real_samples, exon_counts=counts_exons_2)
 df5 <- merge(df3, df4)
 write.table(df5, paste0(wd, "updated_sample_file.tsv"), sep="\t", quote=FALSE, col.names = TRUE, row.names = FALSE)
-
 ```
 
 
+#Step 11
+on Terra/Fireloud, run gCNV. 
 
-
-
-You will need to install svtk: https://github.com/talkowski-lab/svtk
+#Step 12
+Download the segment VCFs and unzip them. 
 ```{r}
-system2("java", sprintf("-Xmx16G -jar %s --help", jar_path))
+wd <- "/path/to/folder/"
 system2("java", sprintf("-Xmx16G -jar %s downloadSegmentsVCFs %ssample_set_entity.tsv %s genotyped_segments_vcf", jar_path, wd, wd ))
+```
+
+#Step 15
+Convert VCFs to BED format
+```{r}
 system2("java", sprintf("-Xmx16G -jar %s convertVCFsToBEDFormat %s svtk_input.bed genotyped-segments- .vcf", jar_path, wd, wd ))
+```
+
+#Step 14
+Cluster calls together. You will need to install svtk: https://github.com/talkowski-lab/svtk
+```{r}
 system2("svtk", sprintf("bedcluster %ssvtk_input.bed %ssvtk_output.bed", wd, wd))
+```
+
+#Step 15
+Merge the input and output of svtk, as svtk will delete exra metadata fields
+```{r}
 system2("java", sprintf("-Xmx16G -jar %s svtkMatch %ssvtk_input.bed %ssvtk_output.bed %sclustered.bed", jar_path, wd, wd, wd))
 ```
 
-
-defragment calls
+#Step 16
+defragment calls. You will need a "References_hg38_gencode_unsplit.bed" file
 ```{r}
 gcnv <- read.table(paste0(wd, "clustered.bed"), sep="\t", stringsAsFactors=FALSE, header=FALSE)
 colnames(gcnv) <- c("chr", "start", "end", "name", "svtype", "sample", "call_name", "vaf", "vac", "pre_rmsstd", "post_rmsstd", "CN", "GT", "NP", "QA", "QS", "QSE", "QSS")
@@ -357,6 +458,7 @@ write.table(as(gcnv_defragged, "data.frame"), file = paste0(wd, "gcnv_defragged.
 You are now basically done. the next steps are generic filtering and metric steps. 
 
 
+#Step 17 QC and filtering
 ```{r}
 gcnv <- read.table(paste0(wd, "gcnv_defragged.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE)
 
@@ -469,15 +571,6 @@ df_d$id <- NULL
 
 write.table(df_d, paste0(wd, "final_callset.tsv"), sep="\t", quote=FALSE, row.names = FALSE)
 ```
-
-
-
-
-
-
-
-
-
 
 
 
