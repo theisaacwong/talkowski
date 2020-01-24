@@ -124,6 +124,17 @@ divideMultiple <- function(svtk){
     svtk <- rbind(svtk, expanded)
     return(svtk)
 }
+
+makeFiles <- function(name, cohort, mat, gbucket){
+    output_name <- paste0(cohort, "-", name, ".txt")
+    colind <- which(colnames(mat)==name)
+    tmp <- mat[,colind]
+    tmp <- str_replace_all(tmp, '\"', "")
+    files <- unlist(str_split(str_replace_all(tmp, "(\\[)|]", ""), ","))
+    write.table(files, quote=FALSE, sep="\t", col.names=F, row.names=F, file=paste0("~/downloads/", output_name))
+    system2("gsutil", paste0("cp ~/downloads/", output_name, " ", gbucket, output_name))
+    #file.remove(paste0("~/downloads/", output_name))
+}
 ```
 
 #Step 1
@@ -383,36 +394,71 @@ df5 <- merge(df3, df4)
 write.table(df5, paste0(wd, "updated_sample_file.tsv"), sep="\t", quote=FALSE, col.names = TRUE, row.names = FALSE)
 ```
 
-
 #Step 11
-on Terra/Fireloud, run gCNV. 
+After running cohort mode, ou will need to upload certain reference files so that case mode can use the model built by cohort mode
+```{r}
+wd <- "/path/to/folder/"
+meta <- read.table(paste0(wd, "sample_set_entity.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE)
+cohorts <- meta[,1][grepl("COHORT", meta[,1])]  # change to your cohort
+pse_case <- NULL
+gbucket = 'gs://.....' # change to your gbucket
+for(i in 1:length(cohorts)){
+    cohort <- cohorts[i]
+    ind <- which(meta[,1] == cohort)
+    case <- str_replace(cohort, "COHORT_", "CASE_")
+    if(case %in% meta[,1]){
+        message(case)
+        makeFiles("calling_configs", case, meta[ind,], gbucket)
+        makeFiles("denoising_configs", case, meta[ind,], gbucket)
+        makeFiles("gcnvkernel_version", case, meta[ind,], gbucket)
+        makeFiles("gcnv_model_tars", case, meta[ind,], gbucket)
+        makeFiles("sharded_interval_lists", case, meta[ind,], gbucket)    
+        pse_case <- rbind(pse_case, meta[ind,])
+    }
+}
+## Update the PARTICIPANT SET file
+pse_case <- pse_case[, which(colnames(pse_case) %in% c("entity.sample_set_id", "intervals", "filtered_intervals", "contig_ploidy_model_tar"))]
+    pse_case[,1] <- str_replace(pse_case[,1], "COHORT_", "CASE_")    
+    pse_case$file_gcnv_model_tars <- paste0(gbucket, pse_case[,1], "-gcnv_model_tars.txt")
+    pse_case$file_calling_configs <- paste0(gbucket, pse_case[,1], "-calling_configs.txt")
+    pse_case$file_denoising_configs <- paste0(gbucket, pse_case[,1], "-denoising_configs.txt")
+    pse_case$file_gcnvkernel_version <- paste0(gbucket, pse_case[,1], "-gcnvkernel_version.txt")
+    pse_case$file_sharded_interval_lists <- paste0(gbucket, pse_case[,1], "-sharded_interval_lists.txt")        
+        pse_case <- rbind(as.character(colnames(pse_case)), apply(pse_case, 2, as.character))
+        pse_case[1,1] <- "entity:sample_set_id"
+        write.table(pse_case, sep="\t", row.names=F, col.names=F, file=paste0("~/downloads/c_pse.txt"), quote=F)
+```
+
 
 #Step 12
+on Terra/Fireloud, run gCNV. 
+
+#Step 13
 Download the segment VCFs and unzip them. 
 ```{r}
 wd <- "/path/to/folder/"
 system2("java", sprintf("-Xmx16G -jar %s downloadSegmentsVCFs %ssample_set_entity.tsv %s genotyped_segments_vcf", jar_path, wd, wd ))
 ```
 
-#Step 15
+#Step 14
 Convert VCFs to BED format
 ```{r}
 system2("java", sprintf("-Xmx16G -jar %s convertVCFsToBEDFormat %s svtk_input.bed genotyped-segments- .vcf", jar_path, wd, wd ))
 ```
 
-#Step 14
+#Step 15
 Cluster calls together. You will need to install svtk: https://github.com/talkowski-lab/svtk
 ```{r}
 system2("svtk", sprintf("bedcluster %ssvtk_input.bed %ssvtk_output.bed", wd, wd))
 ```
 
-#Step 15
+#Step 16
 Merge the input and output of svtk, as svtk will delete exra metadata fields
 ```{r}
 system2("java", sprintf("-Xmx16G -jar %s svtkMatch %ssvtk_input.bed %ssvtk_output.bed %sclustered.bed", jar_path, wd, wd, wd))
 ```
 
-#Step 16
+#Step 17
 defragment calls. You will need a "References_hg38_gencode_unsplit.bed" file
 ```{r}
 gcnv <- read.table(paste0(wd, "clustered.bed"), sep="\t", stringsAsFactors=FALSE, header=FALSE)
@@ -458,7 +504,7 @@ write.table(as(gcnv_defragged, "data.frame"), file = paste0(wd, "gcnv_defragged.
 You are now basically done. the next steps are generic filtering and metric steps. 
 
 
-#Step 17 QC and filtering
+#Step 18 QC and filtering
 ```{r}
 gcnv <- read.table(paste0(wd, "gcnv_defragged.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE)
 
