@@ -421,7 +421,7 @@ task PostprocessGermlineCNVCalls {
             --output-genotyped-intervals ${genotyped_intervals_vcf_filename} \
             --output-genotyped-segments ${genotyped_segments_vcf_filename} \
             --output-denoised-copy-ratios ${denoised_copy_ratios_filename} \
-            --optimizer=fast_compile
+            --optimizer fast_compile
         rm -rf CALLS_*
         rm -rf MODEL_*
         rm -rf contig-ploidy-calls
