@@ -1,7 +1,7 @@
 This is a repository of small scripts intended to automate the batching, clustering, and basic QC of gCNV. 
 Please use the R markdown (.Rmd) file for the full pipeline. 
 
-        Version: 2.8
+        Version: 2.9
 
         java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}
 
