@@ -57,6 +57,12 @@ public class DataFrame {
 	 * for reading in files
 	 */
 	public DataFrame(String file_input_path, boolean header, String sep, String comment_char) throws IOException {
+		if(System.getProperty("os.name").contains("indows")) {
+			// do nothing, hopefully
+		} else {
+			file_input_path = file_input_path.replaceAll("\\", "/");
+		}
+		
 		this.columnMapping = new HashMap<String, Integer>();
 		this.df = new ArrayList<String[]>();
 		this.delimiter = sep;
@@ -129,6 +135,13 @@ public class DataFrame {
 	 * @throws IOException
 	 */
 	public void writeFile(String OUTPUT_PATH, boolean header) throws IOException {
+		
+		if(System.getProperty("os.name").contains("indows")) {
+			// do nothing, hopefully
+		} else {
+			OUTPUT_PATH = OUTPUT_PATH.replaceAll("\\", "/");
+		}
+		
 		BufferedWriter output = null;
 		File file = new File(OUTPUT_PATH);
 		output = new BufferedWriter(new FileWriter(file));
@@ -406,6 +419,12 @@ public class DataFrame {
 	 * 
 	 */
 	public void writeBed(String outputPath) throws IOException {
+		if(System.getProperty("os.name").contains("indows")) {
+			// do nothing, hopefully
+		} else {
+			outputPath = outputPath.replaceAll("\\", "/");
+		}
+		
 		int chr = this.columnMapping.get("chr");
 		int start = this.columnMapping.get("start");
 		int end = this.columnMapping.get("end");
