@@ -60,7 +60,7 @@ public class DataFrame {
 		if(System.getProperty("os.name").contains("indows")) {
 			// do nothing, hopefully
 		} else {
-			file_input_path = file_input_path.replaceAll("\\", "/");
+			file_input_path = file_input_path.replace("\\", "/");
 		}
 		
 		this.columnMapping = new HashMap<String, Integer>();
@@ -139,7 +139,7 @@ public class DataFrame {
 		if(System.getProperty("os.name").contains("indows")) {
 			// do nothing, hopefully
 		} else {
-			OUTPUT_PATH = OUTPUT_PATH.replaceAll("\\", "/");
+			OUTPUT_PATH = OUTPUT_PATH.replace("\\", "/");
 		}
 		
 		BufferedWriter output = null;
@@ -422,7 +422,7 @@ public class DataFrame {
 		if(System.getProperty("os.name").contains("indows")) {
 			// do nothing, hopefully
 		} else {
-			outputPath = outputPath.replaceAll("\\", "/");
+			outputPath = outputPath.replace("\\", "/");
 		}
 		
 		int chr = this.columnMapping.get("chr");
