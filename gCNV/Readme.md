@@ -1,7 +1,7 @@
 This is a repository of small scripts intended to automate the batching, clustering, and basic QC of gCNV. 
 Please use the R markdown (.Rmd) file for the full pipeline. 
 
-        Version: 2.9
+        Version: 2.10
 
         java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}
 
@@ -35,3 +35,25 @@ Please use the R markdown (.Rmd) file for the full pipeline.
                 [svtk_input] - The BED file that was given to svtk bedcluster
                 [svtk_output] - The output file from svtk bedcluster
                 [output_path] - The full path to write the output file to.
+                        
+        getPerSampleMetrics [input_path] [column_name] [output_path]
+                Sum integer columns by classification of a column
+                [input_path] - gcnv output file
+                [column_name] - the name of column to factor by
+                [output_path] - The full path to write the output file to.
+
+        labelMedianQS [input_path] [variantColumn] [qsColumn] [output_path]
+                Add a column for the median QS value
+                [input_path] - gcnv output file
+                [variantColumn] - column name to aggregate by
+                [qsColumn] - the name of column to calculate median with
+                [output_path] - The full path to write the output file to.
+
+        jointCallVCF [input_path] [output_path] [variant_column] [sample_column] {sep} {svtpye_column}
+                convert gcnv output to joint call format
+                [input_path] - gcnv output file
+                [output_path] - The full path to write the output file to.
+                [variant_column] - The name of the variant column
+                [sample_column] - The name of the sample column
+                {sep} - seperator to split samples by when writing output file. default ','
+                {svtype_column} - The name of the svtype column, default 'svtype'
