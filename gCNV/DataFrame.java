@@ -48,7 +48,7 @@ public class DataFrame {
 	public DataFrame() throws IOException {
 		columnMapping = new HashMap<String, Integer>();
 		df = new ArrayList<String[]>();
-		fieldNames = new String[1];
+		fieldNames = new String[0]; //change from 1
 		delimiter = "\t";
 		
 	}
@@ -60,6 +60,7 @@ public class DataFrame {
 		if(System.getProperty("os.name").contains("indows")) {
 			// do nothing, hopefully
 		} else {
+			
 			file_input_path = file_input_path.replace("\\", "/");
 		}
 		
