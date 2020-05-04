@@ -17,6 +17,13 @@ Please use the R markdown (.Rmd) file for the full pipeline.
                 [OUTPUT_PATH] -  The full output path where the matrix file will be written to
                 {regex} - optional - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'
 
+        getCountsMatrixBuffered [sourceFolder] [OUTPUT_PATH] [regex] {buffer-size}
+                Read in all read count files and generate a matrix file
+                [sourceFolder] - Directory where read count files are located in, files can be in sub-directories.
+                [OUTPUT_PATH] -  The full output path where the matrix file will be written to
+                [regex] - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'
+                {buffer-size} - number of lines to store in memory for each thread before writing
+
         downloadSegmentsVCFs [entityPath] [working-directory] {column-name}
                 Download the VCF file outputs from running the main gCNV algorithm
                 [entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'
