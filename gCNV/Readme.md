@@ -1,7 +1,7 @@
 This is a repository of small scripts intended to automate the batching, clustering, and basic QC of gCNV. 
 Please use the R markdown (.Rmd) file for the full pipeline. 
 
-        Version: 2.10
+        Version: 2.11
 
         java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}
 
@@ -64,3 +64,9 @@ Please use the R markdown (.Rmd) file for the full pipeline.
                 [sample_column] - The name of the sample column
                 {sep} - seperator to split samples by when writing output file. default ','
                 {svtype_column} - The name of the svtype column, default 'svtype'
+                
+        annotateWithGenes [gcnv_input_path] [annotation_input_path] [output_path]
+		Annotate a bed file with overlapping intervals from a second bed file
+		[gcnv_input_path] - gcnv file path
+		[annotation_input_path] - annotation file path with columns: chr, start, end, name
+		[output_path] - The full path to write the output file to.
