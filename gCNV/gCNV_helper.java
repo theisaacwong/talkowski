@@ -3,6 +3,7 @@ package gCNV;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -16,8 +17,10 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -51,7 +54,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.10";
+	public static final String VERSION = "2.11";
 	
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
@@ -66,121 +69,12 @@ public class gCNV_helper {
 		try{g.checkVersion();} catch(Exception e) {}
 		System.out.println("Java version: " + System.getProperty("java.version"));
 		System.out.println("Heap Size: " + getHeapSize());
-		
-		System.out.println();
-		if(args.length==0 || args[0].contains("-help") || args[0].contains("-h")) {
-			System.out.println("java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}");
-			System.out.println();
-				System.out.println("\tgetBarcodeCounts [entityPath] [working-directory] {counts-field-name}");
-					System.out.println("\t\tDownload the read count files specified in the entity file");
-					System.out.println("\t\t[entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'");
-					System.out.println("\t\t[working-directory] - Directory to download files to. eg '/home/gCNV/'");
-					System.out.println("\t\t{counts-field-name} - optional - The name of the column in the entity file containing the counts paths. eg 'output_counts_barcode'");
-					System.out.println();
-				System.out.println("\tgetCountsMatrix [sourceFolder] [OUTPUT_PATH] {regex}");
-					System.out.println("\t\tRead in all read count files and generate a matrix file");
-					System.out.println("\t\t[sourceFolder] - Directory where read count files are located in, files can be in sub-directories.");
-					System.out.println("\t\t[OUTPUT_PATH] -  The full output path where the matrix file will be written to");
-					System.out.println("\t\t{regex} - optional - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'");
-					System.out.println();
-				System.out.println("\tgetCountsMatrixBuffered [sourceFolder] [OUTPUT_PATH] [regex] {buffer-size}");
-					System.out.println("\t\tRead in all read count files and generate a matrix file");
-					System.out.println("\t\t[sourceFolder] - Directory where read count files are located in, files can be in sub-directories.");
-					System.out.println("\t\t[OUTPUT_PATH] -  The full output path where the matrix file will be written to");
-					System.out.println("\t\t[regex] - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'");
-					System.out.println("\t\t{buffer-size} - number of lines to store in memory for each thread before writing");
-					System.out.println();
-				System.out.println("\tdownloadSegmentsVCFs [entityPath] [working-directory] {column-name}");
-					System.out.println("\t\tDownload the VCF file outputs from running the main gCNV algorithm");
-					System.out.println("\t\t[entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'");
-					System.out.println("\t\t[working-directory] - Directory to download files to. eg '/home/gCNV/'");
-					System.out.println("\t\t{column-name} - optional - The name of the column in the entity file containing the counts paths. eg 'segments_vcfs'");
-					System.out.println();
-				System.out.println("\tconvertVCFsToBEDFormat [working-directory] [output-path] {prefix-regex} {suffix-regex}");
-					System.out.println("\t\tConvert the gCNV VCF output files to BED format for svtk bedlcuster input");
-					System.out.println("\t\t[working-directory] - Directory where VCF files are located in, files can be in sub-directories.");
-					System.out.println("\t\t[ouput-path] - The output path for the final consolidated BED file");
-					System.out.println("\t\t{prefix-regex} - prefix to trim from file name, eg 'genotyped-segments-'");
-					System.out.println("\t\t{suffix-regex} - suffix used to identify VCF files, used also to trim from file name. eg '.vcf'");
-					System.out.println();
-				System.out.println("\tsvtkMatch [svtk_input] [svtk_output] [output_path]");
-					System.out.println("\t\tMatch up the gCNV meta data with the svtk bedcluster meta data and write to file");
-					System.out.println("\t\t[svtk_input] - The BED file that was given to svtk bedcluster");
-					System.out.println("\t\t[svtk_output] - The output file from svtk bedcluster");
-					System.out.println("\t\t[output_path] - The full path to write the output file to.");
-					System.out.println();
-				System.out.println("\tgetPerSampleMetrics [input_path] [column_name] [output_path]");
-					System.out.println("\t\tSum integer columns by classification of a column");
-					System.out.println("\t\t[input_path] - gcnv output file");
-					System.out.println("\t\t[column_name] - the name of column to factor by");
-					System.out.println("\t\t[output_path] - The full path to write the output file to.");
-					System.out.println();
-				System.out.println("\tlabelMedianQS [input_path] [variantColumn] [qsColumn] [output_path]");
-					System.out.println("\t\tAdd a column for the median QS value");
-					System.out.println("\t\t[input_path] - gcnv output file");
-					System.out.println("\t\t[variantColumn] - column name to aggregate by");
-					System.out.println("\t\t[qsColumn] - the name of column to calculate median with");
-					System.out.println("\t\t[output_path] - The full path to write the output file to.");
-					System.out.println();
-				System.out.println("\tjointCallVCF [input_path] [output_path] [variant_column] [sample_column] {sep} {svtpye_column}");
-					System.out.println("\t\tconvert gcnv output to joint call format");
-					System.out.println("\t\t[input_path] - gcnv output file");
-					System.out.println("\t\t[output_path] - The full path to write the output file to.");
-					System.out.println("\t\t[variant_column] - The name of the variant column");
-					System.out.println("\t\t[sample_column] - The name of the sample column");
-					System.out.println("\t\t{sep} - seperator to split samples by when writing output file. default ','");
-					System.out.println("\t\t{svtype_column} - The name of the svtype column, default 'svtype'");
-					System.out.println();
-					
-		} else if(args[0].equals("getBarcodeCounts")) {
-			if(args.length == 3) {
-				g.getBarcodeCounts(args[1], args[2]);	
-			} else if(args.length == 4) {
-				g.getBarcodeCounts(args[1], args[2], args[3]);
-			}
-		} else if(args[0].equals("getCountsMatrix")) {
-			if(args.length == 3) {
-				g.getCountsMatrix(args[1], args[2]);	
-			} else if(args.length == 4) {
-				g.getCountsMatrix(args[1], args[2], args[3]);
-			}
-		} else if(args[0].equals("downloadSegmentsVCFs")) {
-			if(args.length == 3) {
-				g.downloadSegmentsVCFs(args[1], args[2]);	
-			} else if(args.length == 4) {
-				g.downloadSegmentsVCFs(args[1], args[2], args[3]);
-			}
-		} else if(args[0].equals("convertVCFsToBEDFormat")) {
-			if(args.length == 3) {
-				g.convertVCFsToBEDFormat(args[1], args[2]);
-			} else if(args.length == 5) {
-				g.convertVCFsToBEDFormatWithPloidy(args[1], args[2], args[3], args[4]);
-			}
-		} else if(args[0].equals("svtkMatch")) {
-			if(args.length == 4) {
-				g.svtkMatch(args[1], args[2], args[3]);	
-			}
-		} else if(args[0].equals("getCountsMatrixBuffered")) {
-			if(args.length == 4) {
-				g.getCountsMatrixBuffered(args[1], args[2], args[3]);
-			} else if(args.length == 5) {
-				g.getCountsMatrixBuffered(args[1], args[2], args[3], Integer.parseInt(args[4]));
-			}
-		} else if(args[0].equals("getPerSampleMetrics")) {
-			if(args.length == 4) {
-				g.getPerSampleMetrics(args[1], args[2], args[3], true);
-			}
-		} else if(args[0].equals("labelMedianQS")) {
-			if(args.length == 5) {
-				g.labelMedianQS(args[1], args[2], args[3], args[4]);
-			}
-		} else if(args[0].equals("jointCallVCF")) {
-			if(args.length == 7) {
-				g.jointCallVCF(args[1], args[2], args[3], args[4], args[5], args[6]);
-			} else if(args.length == 5) {
-				g.jointCallVCF(args[1], args[2], args[3], args[4]);
-			}
-		}
+		long startTime = System.nanoTime();
+		g.run(args);
+		long endTime = System.nanoTime();
+		long secondsElapsed = (long) ((endTime - startTime) / 1000000000);
+		System.out.println("Time elapsed: " + secondsElapsed + "s");
+		System.out.println(getTimeHumanReadable(secondsElapsed));
 	}
 	
 	public void checkVersion() throws IOException {
@@ -211,6 +105,108 @@ public class gCNV_helper {
 		 */
 	}
 	
+	
+	/**
+	 * 
+	 * @param GCNV_INPUT
+	 * @param ANNO_INPUT
+	 * @param OUTPUT_PATH
+	 * @throws IOException
+	 */
+	public void annotateWithGenes(String GCNV_INPUT, String ANNO_INPUT, String OUTPUT_PATH) throws IOException {
+		System.out.println("Reading annotation file");
+		DataFrame anno = new DataFrame(ANNO_INPUT, true, "\\t", "#"); // annotation file
+		System.out.println("Read " + anno.nrow() + " annotations");
+		
+		ArrayList<Integer> anno_start = new ArrayList<>();
+		ArrayList<Integer> anno_end = new ArrayList<>();
+		HashMap<String, Integer> chrToLine = new HashMap<>();
+		HashMap<String, String> variantToGene = new HashMap<>();
+		HashMap<String, Integer> chrToLastLine = new HashMap<>();
+
+		int annoChr = 0;
+		int annoStart = 1;
+		int annoEnd = 2;
+		int annoAnno = 3;
+		
+		for(int i = 0; i < anno.nrow(); i++) {
+			anno_start.add(Integer.parseInt(anno.get(i, annoStart)));
+			anno_end.add(Integer.parseInt(anno.get(i, annoEnd)));
+			chrToLastLine.put(anno.get(i, annoChr), i);
+			if(!chrToLine.containsKey(anno.get(i, annoChr))) {
+				chrToLine.put(anno.get(i, annoChr), i);
+			}
+		}
+		
+		System.out.println("writing intersections");
+		File file = new File(OUTPUT_PATH);
+		BufferedWriter output = new BufferedWriter(new FileWriter(file));
+
+		FileInputStream inputStream = new FileInputStream(GCNV_INPUT);
+		Scanner sc = new Scanner(inputStream, "UTF-8");
+
+		String line = "";
+		int gcnvChr = 0;
+		int gcnvStart = 1;
+		int gcnvEnd = 2;
+		
+		try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
+		if(line.split("\\t")[gcnvChr].equals("chr") || line.split("\\t")[0].equals("CHROM")) {
+			//do nothing
+		} else {
+			sc.close();
+			sc = new Scanner(inputStream, "UTF-8");
+		}
+		
+		while (sc.hasNextLine()) {
+			try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
+
+			String[] linee = line.split("\\t");
+			
+			String varName = linee[gcnvChr] + "_" + linee[gcnvStart] + "_" + linee[gcnvEnd];
+			if(variantToGene.containsKey(varName)) {
+				String genes = variantToGene.get(varName);
+				output.write(line + "\t" + genes);
+				output.write("\n");
+			} else {
+				String gChr = linee[gcnvChr];
+				int gStart = Integer.parseInt(linee[gcnvStart]);
+				int gEnd = Integer.parseInt(linee[gcnvEnd]);
+
+				HashSet<String> annos = new HashSet<>();
+				
+				// I tried doing binary search since starts are in sorted order, but this was easier to read and not much slower
+				int firstAnnoEndGTgStart = chrToLine.get(gChr);
+				int lastAnnoStartGTgEnd  = chrToLastLine.get(gChr);
+				while(gStart > anno_end.get(firstAnnoEndGTgStart)) {
+					firstAnnoEndGTgStart++;
+				}
+				while(gEnd < anno_start.get(lastAnnoStartGTgEnd)) {
+					lastAnnoStartGTgEnd--;
+				}
+				
+				for(int i = firstAnnoEndGTgStart; i <= lastAnnoStartGTgEnd; i++) {
+					int aStart = anno_start.get(i);
+					int aEnd = anno_end.get(i);
+					if(aStart <= gEnd && aEnd >= gStart) {
+						annos.add(anno.get(i, annoAnno));
+					}
+				}
+				
+				ArrayList<String> annosal = new ArrayList<>();
+				annosal.addAll(annos);
+				Collections.sort(annosal);
+				
+				String genes = String.join(",", annosal);
+				variantToGene.put(varName, genes);
+				output.write(line + "\t" + genes);
+				output.write("\n");
+			}
+		}
+
+		output.close();
+		sc.close();
+	}
 	
 	public void jointCallVCF(String INPUT_PATH, String OUTPUT_PATH, String classColumn, String observationColumn) throws IOException {
 		String defaultSep = ",";
@@ -446,7 +442,9 @@ public class gCNV_helper {
 	public String toString() {
 		return String.join(" ", initializationArgs) + "\n" + date;
 	}
+
 	
+	//TODO: MAKE GENERIC
 	/**
 	 * currently, I am hard-coding things, but in the future I can make the maps dynamically
 	 * @param svtk_input
@@ -563,6 +561,7 @@ public class gCNV_helper {
 	}
 	
 	/**
+	 * @deprecated
 	 * A wrapper to call the full convertVCFsToBEDFormat() using generic arguements
 	 * @param wd
 	 * @param output
@@ -573,14 +572,15 @@ public class gCNV_helper {
 	}
 	
 	/**
-	 * 
+	 * @deprecated
 	 * @param wd - the working directory where VCFs are stored. VCFs can be in sub-directories.
 	 * @param output - The output path for the final consolidated BED file
 	 * @param prefixRegex - prefix to trim from file name, eg "genotyped-segments-"
 	 * @param suffixRegex - suffix used to identify VCF files, used also to trim from file name. eg ".vcf"
 	 * @throws IOException
 	 */
-	public void convertVCFsToBEDFormat(String wd, String output, String prefixRegex, String suffixRegex) throws IOException {
+	public void convertVCFsToBEDFormat_old(String wd, String output, String prefixRegex, String suffixRegex) throws IOException {
+		System.out.println("WARNING: this method is deprecated");
 		File[] directories = new File(wd).listFiles(File::isDirectory);
 		System.out.println(Arrays.toString(directories));
 		System.out.println("n directories: " + directories.length);
@@ -751,7 +751,8 @@ public class gCNV_helper {
 	 * @param suffixRegex - suffix used to identify VCF files, used also to trim from file name. eg ".vcf"
 	 * @throws IOException
 	 */
-	public void convertVCFsToBEDFormatWithPloidy(String wd, String output, String prefixRegex, String suffixRegex) throws IOException {
+	public void convertVCFsToBEDFormat(String wd, String output, String prefixRegex, String suffixRegex) throws IOException {
+		//withploidy
 		File[] directories = new File(wd).listFiles(File::isDirectory);
 		System.out.println(Arrays.toString(directories));
 		System.out.println("n directories: " + directories.length);
@@ -1447,7 +1448,141 @@ public class gCNV_helper {
 		return sb.toString();
 	}
 	
+	public static String getTimeHumanReadable(long time) {
+		long seconds = time % 60;
+		long minutes = (time/60) % 60;
+		long hours = (time/3600);
+		
+		return "Hours: " + hours + "  Min: " + minutes + "  Sec: " + seconds;
+	}
 	
+	public void printOptions() {
+		System.out.println("java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}");
+		System.out.println();
+			System.out.println("\tgetBarcodeCounts [entityPath] [working-directory] {counts-field-name}");
+				System.out.println("\t\tDownload the read count files specified in the entity file");
+				System.out.println("\t\t[entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'");
+				System.out.println("\t\t[working-directory] - Directory to download files to. eg '/home/gCNV/'");
+				System.out.println("\t\t{counts-field-name} - optional - The name of the column in the entity file containing the counts paths. eg 'output_counts_barcode'");
+				System.out.println();
+			System.out.println("\tgetCountsMatrix [sourceFolder] [OUTPUT_PATH] {regex}");
+				System.out.println("\t\tRead in all read count files and generate a matrix file");
+				System.out.println("\t\t[sourceFolder] - Directory where read count files are located in, files can be in sub-directories.");
+				System.out.println("\t\t[OUTPUT_PATH] -  The full output path where the matrix file will be written to");
+				System.out.println("\t\t{regex} - optional - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'");
+				System.out.println();
+			System.out.println("\tgetCountsMatrixBuffered [sourceFolder] [OUTPUT_PATH] [regex] {buffer-size}");
+				System.out.println("\t\tRead in all read count files and generate a matrix file");
+				System.out.println("\t\t[sourceFolder] - Directory where read count files are located in, files can be in sub-directories.");
+				System.out.println("\t\t[OUTPUT_PATH] -  The full output path where the matrix file will be written to");
+				System.out.println("\t\t[regex] - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'");
+				System.out.println("\t\t{buffer-size} - number of lines to store in memory for each thread before writing");
+				System.out.println();
+			System.out.println("\tdownloadSegmentsVCFs [entityPath] [working-directory] {column-name}");
+				System.out.println("\t\tDownload the VCF file outputs from running the main gCNV algorithm");
+				System.out.println("\t\t[entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'");
+				System.out.println("\t\t[working-directory] - Directory to download files to. eg '/home/gCNV/'");
+				System.out.println("\t\t{column-name} - optional - The name of the column in the entity file containing the counts paths. eg 'segments_vcfs'");
+				System.out.println();
+			System.out.println("\tconvertVCFsToBEDFormat [working-directory] [output-path] {prefix-regex} {suffix-regex}");
+				System.out.println("\t\tConvert the gCNV VCF output files to BED format for svtk bedlcuster input");
+				System.out.println("\t\t[working-directory] - Directory where VCF files are located in, files can be in sub-directories.");
+				System.out.println("\t\t[ouput-path] - The output path for the final consolidated BED file");
+				System.out.println("\t\t{prefix-regex} - prefix to trim from file name, eg 'genotyped-segments-'");
+				System.out.println("\t\t{suffix-regex} - suffix used to identify VCF files, used also to trim from file name. eg '.vcf'");
+				System.out.println();
+			System.out.println("\tsvtkMatch [svtk_input] [svtk_output] [output_path]");
+				System.out.println("\t\tMatch up the gCNV meta data with the svtk bedcluster meta data and write to file");
+				System.out.println("\t\t[svtk_input] - The BED file that was given to svtk bedcluster");
+				System.out.println("\t\t[svtk_output] - The output file from svtk bedcluster");
+				System.out.println("\t\t[output_path] - The full path to write the output file to.");
+				System.out.println();
+			System.out.println("\tgetPerSampleMetrics [input_path] [column_name] [output_path]");
+				System.out.println("\t\tSum integer columns by classification of a column");
+				System.out.println("\t\t[input_path] - gcnv output file");
+				System.out.println("\t\t[column_name] - the name of column to factor by");
+				System.out.println("\t\t[output_path] - The full path to write the output file to.");
+				System.out.println();
+			System.out.println("\tlabelMedianQS [input_path] [variantColumn] [qsColumn] [output_path]");
+				System.out.println("\t\tAdd a column for the median QS value");
+				System.out.println("\t\t[input_path] - gcnv output file");
+				System.out.println("\t\t[variantColumn] - column name to aggregate by");
+				System.out.println("\t\t[qsColumn] - the name of column to calculate median with");
+				System.out.println("\t\t[output_path] - The full path to write the output file to.");
+				System.out.println();
+			System.out.println("\tjointCallVCF [input_path] [output_path] [variant_column] [sample_column] {sep} {svtpye_column}");
+				System.out.println("\t\tconvert gcnv output to joint call format");
+				System.out.println("\t\t[input_path] - gcnv output file");
+				System.out.println("\t\t[output_path] - The full path to write the output file to.");
+				System.out.println("\t\t[variant_column] - The name of the variant column");
+				System.out.println("\t\t[sample_column] - The name of the sample column");
+				System.out.println("\t\t{sep} - seperator to split samples by when writing output file. default ','");
+				System.out.println("\t\t{svtype_column} - The name of the svtype column, default 'svtype'");
+				System.out.println();
+			System.out.println("\tannotateWithGenes [gcnv_input_path] [annotation_input_path] [output_path]");
+				System.out.println("\t\tAnnotate a bed file with overlapping intervals from a second bed file");
+				System.out.println("\t\t[gcnv_input_path] - gcnv file path");
+				System.out.println("\t\t[annotation_input_path] - annotation file path with columns: chr, start, end, name");
+				System.out.println("\t\t[output_path] - The full path to write the output file to.");
+				System.out.println();
+	}
+//	/public void annotateWithGenes(String GCNV_INPUT, String ANNO_INPUT, String OUTPUT_PATH)
+	public void run(String[] args) throws IOException, InterruptedException {
+		System.out.println();
+		if(args.length==0 || args[0].contains("-help") || args[0].contains("-h")) {
+			printOptions();
+		} else if(args[0].equals("getBarcodeCounts")) {
+			if(args.length == 3) {
+				getBarcodeCounts(args[1], args[2]);	
+			} else if(args.length == 4) {
+				getBarcodeCounts(args[1], args[2], args[3]);
+			}
+		} else if(args[0].equals("getCountsMatrix")) {
+			if(args.length == 3) {
+				getCountsMatrix(args[1], args[2]);	
+			} else if(args.length == 4) {
+				getCountsMatrix(args[1], args[2], args[3]);
+			}
+		} else if(args[0].equals("downloadSegmentsVCFs")) {
+			if(args.length == 3) {
+				downloadSegmentsVCFs(args[1], args[2]);	
+			} else if(args.length == 4) {
+				downloadSegmentsVCFs(args[1], args[2], args[3]);
+			}
+		} else if(args[0].equals("convertVCFsToBEDFormat")) {
+			if(args.length == 3) {
+				convertVCFsToBEDFormat(args[1], args[2]);
+			} else if(args.length == 5) {
+				convertVCFsToBEDFormat(args[1], args[2], args[3], args[4]);
+			}
+		} else if(args[0].equals("svtkMatch")) {
+			if(args.length == 4) {
+				svtkMatch(args[1], args[2], args[3]);	
+			}
+		} else if(args[0].equals("getCountsMatrixBuffered")) {
+			if(args.length == 4) {
+				getCountsMatrixBuffered(args[1], args[2], args[3]);
+			} else if(args.length == 5) {
+				getCountsMatrixBuffered(args[1], args[2], args[3], Integer.parseInt(args[4]));
+			}
+		} else if(args[0].equals("getPerSampleMetrics")) {
+			if(args.length == 4) {
+				getPerSampleMetrics(args[1], args[2], args[3], true);
+			}
+		} else if(args[0].equals("labelMedianQS")) {
+			if(args.length == 5) {
+				labelMedianQS(args[1], args[2], args[3], args[4]);
+			}
+		} else if(args[0].equals("jointCallVCF")) {
+			if(args.length == 7) {
+				jointCallVCF(args[1], args[2], args[3], args[4], args[5], args[6]);
+			} else if(args.length == 5) {
+				jointCallVCF(args[1], args[2], args[3], args[4]);
+			}
+		} else if(args[0].equals("annotateWithGenes")) {
+			annotateWithGenes(args[1], args[2], args[3]);
+		}
+	}
 	
 	
 	
