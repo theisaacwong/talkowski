@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -54,7 +55,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.11";
+	public static final String VERSION = "2.12";
 	
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
@@ -105,6 +106,87 @@ public class gCNV_helper {
 		 */
 	}
 	
+	/**
+	 * is string builder creation slower or faster than multiple string.equals() calls?
+	 * I'm currently thinking that string.equals() calls might be faster?
+	 * I'll probably do both just to see
+	 * @param INPUT_PATH
+	 * @param OUTPUT_PATH
+	 * @param columnsToHashOnString
+	 * @param columnsToMergeString
+	 * @throws IOException
+	 */
+	public void condenseBedtoolsIntersect(String INPUT_PATH, String OUTPUT_PATH, String columnsToHashOnString, String columnsToMergeString, String columnsToKeepString) throws IOException {
+		int[] columnsToHash = Arrays.asList(columnsToHashOnString.split(",")).stream().mapToInt(Integer::parseInt).toArray();
+		int[] columnsToMerge = Arrays.asList(columnsToMergeString.split(",")).stream().mapToInt(Integer::parseInt).toArray();
+		int[] columnsToKeep = Arrays.asList(columnsToKeepString.split(",")).stream().mapToInt(Integer::parseInt).toArray();
+		String tab = "\t";
+		String newline = "\n";
+		int lastColumnToMerge = columnsToMerge[columnsToMerge.length - 1];
+		
+		File file = new File(OUTPUT_PATH);
+		BufferedWriter output = new BufferedWriter(new FileWriter(file));
+
+		FileInputStream inputStream = new FileInputStream(INPUT_PATH);
+		Scanner sc = new Scanner(inputStream, "UTF-8");
+		
+		Map<Integer, Set<String>> columnToMergedStrings = new HashMap<>(); 
+		for(int i : columnsToMerge) {
+			columnToMergedStrings.put(i, new HashSet<>());
+		}
+
+		String[] previousLinee = sc.nextLine().split("\t"); //previous hash?
+		
+		while (sc.hasNextLine()) {
+			String currentLine = "";
+			try{currentLine = sc.nextLine();} catch(Exception e){System.out.println(e);}
+			
+			boolean isSame = true;
+			String[] currentLinee = currentLine.split("\t");
+			
+			// not sure if this is better or worse than comparing concatenated strings to each other
+			for(int i : columnsToHash) {
+				if(!previousLinee[i].equals(currentLinee[i])) {
+					isSame = false;
+					break;
+				}
+			}
+			
+			if(isSame) {
+				for(int i : columnsToMerge) {
+					columnToMergedStrings.get(i).add(currentLinee[i]);
+				}
+			} else {
+				StringBuilder lineToWrite = new StringBuilder();
+				for(int i : columnsToKeep) {
+					lineToWrite.append(previousLinee[i]);
+					lineToWrite.append(tab);
+				}
+				for(int i : columnsToMerge) {
+					List<String> values = new ArrayList<>();
+					values.addAll(columnToMergedStrings.get(i));
+					Collections.sort(values);
+					if(values.size()==0) {
+						values.add("None");
+					}
+					lineToWrite.append(String.join(",", values));
+					if(i != lastColumnToMerge) {
+						lineToWrite.append(tab);
+					}
+				}
+				lineToWrite.append(newline);
+				output.write(lineToWrite.toString());
+				
+				previousLinee = currentLinee;
+				for(int i : columnsToMerge) {
+					columnToMergedStrings.put(i, new HashSet<>());
+				}
+			}
+		}
+
+		output.close();
+		sc.close();
+	}
 	
 	/**
 	 * 
@@ -152,9 +234,10 @@ public class gCNV_helper {
 		
 		try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
 		if(line.split("\\t")[gcnvChr].equals("chr") || line.split("\\t")[0].equals("CHROM")) {
-			//do nothing
+			output.write(line + "\n");
 		} else {
 			sc.close();
+			sc = null;
 			sc = new Scanner(inputStream, "UTF-8");
 		}
 		
@@ -170,6 +253,9 @@ public class gCNV_helper {
 				output.write("\n");
 			} else {
 				String gChr = linee[gcnvChr];
+				if(!chrToLine.containsKey(gChr)) {
+					continue;
+				}
 				int gStart = Integer.parseInt(linee[gcnvStart]);
 				int gEnd = Integer.parseInt(linee[gcnvEnd]);
 
@@ -178,17 +264,21 @@ public class gCNV_helper {
 				// I tried doing binary search since starts are in sorted order, but this was easier to read and not much slower
 				int firstAnnoEndGTgStart = chrToLine.get(gChr);
 				int lastAnnoStartGTgEnd  = chrToLastLine.get(gChr);
-				while(gStart > anno_end.get(firstAnnoEndGTgStart)) {
+				while((firstAnnoEndGTgStart < anno.nrow()) && gStart > anno_end.get(firstAnnoEndGTgStart) && gChr.equals(anno.get(firstAnnoEndGTgStart, annoChr))) {
 					firstAnnoEndGTgStart++;
 				}
-				while(gEnd < anno_start.get(lastAnnoStartGTgEnd)) {
+				while((lastAnnoStartGTgEnd > 0) && gEnd < anno_start.get(lastAnnoStartGTgEnd) && gChr.equals(anno.get(lastAnnoStartGTgEnd, annoChr))) {
 					lastAnnoStartGTgEnd--;
 				}
+				
+				int buffer = 3;
+				firstAnnoEndGTgStart = Math.max(0, firstAnnoEndGTgStart-buffer);
+				lastAnnoStartGTgEnd = Math.min(anno.nrow()-1, lastAnnoStartGTgEnd+buffer);
 				
 				for(int i = firstAnnoEndGTgStart; i <= lastAnnoStartGTgEnd; i++) {
 					int aStart = anno_start.get(i);
 					int aEnd = anno_end.get(i);
-					if(aStart <= gEnd && aEnd >= gStart) {
+					if(aStart <= gEnd && aEnd >= gStart && anno.get(i, annoChr).equals(gChr)) {
 						annos.add(anno.get(i, annoAnno));
 					}
 				}
@@ -198,6 +288,9 @@ public class gCNV_helper {
 				Collections.sort(annosal);
 				
 				String genes = String.join(",", annosal);
+				if(genes.equals("")) {
+					genes = "None";
+				}
 				variantToGene.put(varName, genes);
 				output.write(line + "\t" + genes);
 				output.write("\n");
@@ -1525,6 +1618,14 @@ public class gCNV_helper {
 				System.out.println("\t\t[annotation_input_path] - annotation file path with columns: chr, start, end, name");
 				System.out.println("\t\t[output_path] - The full path to write the output file to.");
 				System.out.println();
+			System.out.println("\tcondenseBedtoolsIntersect [input_path] [output_path] [columns_to_hash_on] [columns_to_merge] [columns_to_keep]");
+				System.out.println("\t\tCondense the output of bedtools intersect by adding a column for annotations instead of having each row be a unique annotation");
+				System.out.println("\t\t[input_path] - input path");
+				System.out.println("\t\t[output_path] - output path");
+				System.out.println("\t\t[columns_to_hash_on] - comma separated columns to identify rows to merge. eg 1,2,3 ");
+				System.out.println("\t\t[columns_to_merge] - comma separated columns to merge into annotation column. eg 7,9");
+				System.out.println("\t\t[columns_to_keep] - comma separated columns to keep, eg 4,5,6");
+				System.out.println();
 	}
 //	/public void annotateWithGenes(String GCNV_INPUT, String ANNO_INPUT, String OUTPUT_PATH)
 	public void run(String[] args) throws IOException, InterruptedException {
@@ -1581,6 +1682,10 @@ public class gCNV_helper {
 			}
 		} else if(args[0].equals("annotateWithGenes")) {
 			annotateWithGenes(args[1], args[2], args[3]);
+		} else if(args[0].equals("condenseBedtoolsIntersect")) {
+			condenseBedtoolsIntersect(args[1], args[2], args[3], args[4], args[5]);
+		} else {
+			System.out.println("unknown command");
 		}
 	}
 	
