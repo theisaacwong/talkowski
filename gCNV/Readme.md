@@ -1,7 +1,7 @@
 This is a repository of small scripts intended to automate the batching, clustering, and basic QC of gCNV. 
 Please use the R markdown (.Rmd) file for the full pipeline. 
 
-        Version: 2.11
+        Version: 2.12
 
         java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}
 
@@ -70,3 +70,12 @@ Please use the R markdown (.Rmd) file for the full pipeline.
 		[gcnv_input_path] - gcnv file path
 		[annotation_input_path] - annotation file path with columns: chr, start, end, name
 		[output_path] - The full path to write the output file to.
+		
+        condenseBedtoolsIntersect [input_path] [output_path] [columns_to_hash_on] [columns_to_merge] [columns_to_keep]
+		Condense the output of bedtools intersect by adding a column for annotations instead of having each row be a unique annotation
+		[input_path] - input path
+		[output_path] - output path
+		[columns_to_hash_on] - comma separated columns to identify rows to merge. eg 1,2,3 
+		[columns_to_merge] - comma separated columns to merge into annotation column. eg 7,9
+		[columns_to_keep] - comma separated columns to keep, eg 4,5,6
+
