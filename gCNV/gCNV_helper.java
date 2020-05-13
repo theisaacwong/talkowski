@@ -55,7 +55,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.12";
+	public static final String VERSION = "2.14";
 	
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
@@ -1025,8 +1025,9 @@ public class gCNV_helper {
 	        		currentVCF.df.remove(j);
 	        	}
 	        	
+	        	// currentVCF.get("ploidy", j)
 	        	for(int j = 0; j < currentVCF.nrow(); j++) {
-	        		if(Integer.parseInt(currentVCF.get("CN", j)) > Integer.parseInt(ploidy.get(j))) {
+	        		if(Integer.parseInt(currentVCF.get("CN", j)) > Integer.parseInt(currentVCF.get("ploidy", j))) {
 	        			call.add("DUP");
 	        			strand.add("+");
 	        		} else {
@@ -1036,9 +1037,6 @@ public class gCNV_helper {
 	        	}
 	        	currentVCF.addColumn("svtype", call);
 	        	currentVCF.addColumn("strand", strand);
-	        	
-	        	
-	        	
 	        	
 	        	
 	        	
