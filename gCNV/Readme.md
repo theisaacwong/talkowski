@@ -64,11 +64,12 @@ Please use the R markdown (.Rmd) file for the full pipeline.
                 [sample_column] - The name of the sample column
                 {sep} - seperator to split samples by when writing output file. default ','
                 {svtype_column} - The name of the svtype column, default 'svtype'
-                
-        annotateWithGenes [gcnv_input_path] [annotation_input_path] [output_path]
+                	
+        annotateWithGenes [mode] [gcnv_input_path] [annotation_input_path] [output_path]
 		Annotate a bed file with overlapping intervals from a second bed file
+		[mode] - either 'strict' or 'any'; strict requires 10%/75% exon space overlap for DEL/DUP, any requires at least 1bp overlap
 		[gcnv_input_path] - gcnv file path
-		[annotation_input_path] - annotation file path with columns: chr, start, end, name
+		[annotation_input_path] - any: a bed file with columns: chr, start, end, name; strict: gencode gtf file uncompressed
 		[output_path] - The full path to write the output file to.
 		
         condenseBedtoolsIntersect [input_path] [output_path] [columns_to_hash_on] [columns_to_merge] [columns_to_keep]
