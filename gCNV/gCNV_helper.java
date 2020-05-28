@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -30,6 +31,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+
+
+
 /**
  * 
  * @author Isaac Wong
@@ -55,7 +59,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.14";
+	public static final String VERSION = "2.15";
 	
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
@@ -104,6 +108,186 @@ public class gCNV_helper {
 		/*
 		 * 1. give each CNV call its own unique ID number, have a field 
 		 */
+	}
+	
+	/**
+	 * reads in a GTF format file, 
+	 * @param INPUT_GTF
+	 * @throws FileNotFoundException 
+	 */
+	public static ArrayList<Gene> parseGTFFile(String INPUT_GTF) throws FileNotFoundException {
+		print("reading annotation file");
+		
+		HashMap<String, ArrayList<Integer>> geneToStart = new HashMap<>();
+		HashMap<String, ArrayList<Integer>> geneToEnd = new HashMap<>();
+		HashMap<String, String> geneToChr = new HashMap<>();
+		
+		int gtfChr = 0;
+		int gtfFeatureType = 2;
+		int gtfStart = 3; 
+		int gtfEnd = 4;
+		
+		Pattern geneNamePattern = Pattern.compile("(?<=gene_name \").+?(?=\")");
+		Pattern geneTypePattern = Pattern.compile("(?<=gene_type \").+?(?=\")");
+		
+		FileInputStream inputStream = new FileInputStream(INPUT_GTF);
+		Scanner gtf = new Scanner(inputStream, "UTF-8");
+		while(gtf.hasNext()) {
+			String line = gtf.nextLine(); if(line.startsWith("#")) continue;
+			String[] linee = line.split("\\t");
+			
+			Matcher geneTypeMatcher = geneTypePattern.matcher(line);
+			String geneType = geneTypeMatcher.find() ? geneTypeMatcher.group() : "-1"; 
+			String featureType = linee[gtfFeatureType];
+			
+			if(geneType.equals("protein_coding") && featureType.equals("exon")) {
+				
+				Matcher geneNameMatcher = geneNamePattern.matcher(line);
+				String geneName = geneNameMatcher.find() ? geneNameMatcher.group() : "-1";
+				
+				if(geneToStart.containsKey(geneName) == false) {
+					geneToStart.put(geneName, new ArrayList<>());
+					geneToEnd.put(geneName, new ArrayList<>());
+					geneToChr.put(geneName, linee[gtfChr]);
+				}
+				geneToStart.get(geneName).add(Integer.parseInt(linee[gtfStart]));
+				geneToEnd.get(geneName).add(Integer.parseInt(linee[gtfEnd]));
+			}
+		}
+		gtf.close();
+		gtf = null;
+		
+		print("analyzing annotations");
+		
+		ArrayList<Gene> genes = new ArrayList<>();
+		for(String gene : geneToChr.keySet()) {
+			
+			HashMap<Integer, Integer> startIdToIndex = new HashMap<>();
+			var currentStarts = geneToStart.get(gene);
+			for(int i = 0; i < currentStarts.size(); i++) {
+				if(!startIdToIndex.containsKey(currentStarts.get(i))) {
+					startIdToIndex.put(currentStarts.get(i), i);
+				} else {
+					int oldEnd = geneToEnd.get(gene).get(startIdToIndex.get(currentStarts.get(i)));
+					int newEnd = geneToEnd.get(gene).get(i);
+					if(newEnd > oldEnd) {
+						startIdToIndex.put(currentStarts.get(i), i);
+					} // else do nothing
+				}
+			}
+			
+			Collections.sort(currentStarts);
+			ArrayList<Integer> sortedEnds = new ArrayList<>();
+			var currentEnds = geneToEnd.get(gene);
+			for(int i = 0; i < currentStarts.size(); i++) {
+				sortedEnds.add(currentEnds.get(startIdToIndex.get(currentStarts.get(i))));
+				
+			}
+			
+			genes.add(new Gene(gene, geneToChr.get(gene), currentStarts, sortedEnds));
+		}
+		
+		Collections.sort(genes);
+		print("read " + genes.size() + " genes");
+		return genes;
+	}
+	
+	public void annotateGenesPercentBased(ArrayList<Gene> genes, String GCNV_INPUT, String OUTPUT_PATH) throws IOException {
+		ArrayList<Integer> annoStarts = new ArrayList<>();
+		ArrayList<Integer> annoEnds = new ArrayList<>();
+		HashMap<String, Integer> chrToIndex = new HashMap<>();
+		HashMap<String, String> variantToGene = new HashMap<>();
+		HashMap<String, Integer> chrToLastIndex = new HashMap<>();
+		
+		for(int i = 0; i < genes.size(); i++) {
+			annoStarts.add(genes.get(i).minStart);
+			annoEnds.add(genes.get(i).maxEnd);
+			chrToLastIndex.put(genes.get(i).chr, i);
+			if(!chrToIndex.containsKey(genes.get(i).chr)) {
+				chrToIndex.put(genes.get(i).chr, i);
+			}
+		}
+		
+		System.out.println("writing intersections");
+		File file = new File(OUTPUT_PATH);
+		BufferedWriter output = new BufferedWriter(new FileWriter(file));
+
+		FileInputStream inputStream = new FileInputStream(GCNV_INPUT);
+		Scanner sc = new Scanner(inputStream, "UTF-8");
+
+		String line = "";
+		int gcnvChr = 0;
+		int gcnvStart = 1;
+		int gcnvEnd = 2;
+		int gcnvType = 4;
+		
+		line = sc.nextLine();
+		if(line.split("\\t")[gcnvChr].equals("chr") || line.split("\\t")[gcnvChr].equals("CHROM")) {
+			output.write(line + "\tgenes"+ "\n");
+		} else {
+			sc.close();
+			sc = null;
+			sc = new Scanner(inputStream, "UTF-8");
+		}
+		
+		while (sc.hasNextLine()) {
+			line = sc.nextLine();
+			String[] linee = line.split("\\t");
+			
+			String varName = linee[gcnvChr] + "_" + linee[gcnvStart] + "_" + linee[gcnvEnd] + "_" + linee[gcnvType];
+			if(variantToGene.containsKey(varName)) {
+				String overlappingGenes = variantToGene.get(varName);
+				output.write(line + "\t" + overlappingGenes + "\n");
+			} else {
+
+				String gChr = linee[gcnvChr];
+				int gStart = Integer.parseInt(linee[gcnvStart]);
+				int gEnd = Integer.parseInt(linee[gcnvEnd]);
+				
+				if(!chrToIndex.containsKey(gChr)) {continue;}
+				
+				HashSet<String> annos = new HashSet<>();
+				int firstAnnoEndGTgStart = chrToIndex.get(gChr);
+				int lastAnnoStartGTgEnd  = chrToLastIndex.get(gChr);
+				while((firstAnnoEndGTgStart < genes.size()) && gStart > annoEnds.get(firstAnnoEndGTgStart) && gChr.equals(genes.get(firstAnnoEndGTgStart).chr)) {
+					firstAnnoEndGTgStart++;
+				}
+				while((lastAnnoStartGTgEnd > 0) && gEnd < annoStarts.get(lastAnnoStartGTgEnd) && gChr.equals(genes.get(lastAnnoStartGTgEnd).chr)) {
+					lastAnnoStartGTgEnd--;
+				}
+				
+				int buffer = 3;
+				firstAnnoEndGTgStart = Math.max(0, firstAnnoEndGTgStart-buffer);
+				lastAnnoStartGTgEnd = Math.min(genes.size()-1, lastAnnoStartGTgEnd+buffer);
+//				System.out.println("n overlaps: " + (lastAnnoStartGTgEnd - firstAnnoEndGTgStart));
+				for(int i = firstAnnoEndGTgStart; i <= lastAnnoStartGTgEnd; i++) {
+					
+					double percentOverlap = genes.get(i).calculateOverlapPercent(gStart, gEnd);
+//					System.out.println("%: " + percentOverlap);
+					if(linee[gcnvType].equals("DEL") && percentOverlap >= 0.1 && gChr.equals(genes.get(i).chr)) {
+						annos.add(genes.get(i).name);
+					} else if(linee[gcnvType].equals("DUP") && percentOverlap >= 0.75 && gChr.equals(genes.get(i).chr)) {
+						annos.add(genes.get(i).name);
+					} 
+				
+				}
+				
+				ArrayList<String> annosal = new ArrayList<>();
+				annosal.addAll(annos);
+				Collections.sort(annosal);
+				
+				String overlappingGenes = String.join(",", annosal);
+				if(overlappingGenes.equals("")) {
+					overlappingGenes = "None";
+				}
+				variantToGene.put(varName, overlappingGenes);
+				output.write(line + "\t" + overlappingGenes + "\n");
+
+			}
+			
+		}
+		output.close();
+		sc.close();
 	}
 	
 	/**
@@ -234,7 +418,7 @@ public class gCNV_helper {
 		
 		try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
 		if(line.split("\\t")[gcnvChr].equals("chr") || line.split("\\t")[0].equals("CHROM")) {
-			output.write(line + "\n");
+			output.write(line + "\tgenes"+ "\n");
 		} else {
 			sc.close();
 			sc = null;
@@ -1539,6 +1723,10 @@ public class gCNV_helper {
 		return sb.toString();
 	}
 	
+	public static void print(String str) {
+		System.out.println(str);
+	}
+	
 	public static String getTimeHumanReadable(long time) {
 		long seconds = time % 60;
 		long minutes = (time/60) % 60;
@@ -1610,10 +1798,11 @@ public class gCNV_helper {
 				System.out.println("\t\t{sep} - seperator to split samples by when writing output file. default ','");
 				System.out.println("\t\t{svtype_column} - The name of the svtype column, default 'svtype'");
 				System.out.println();
-			System.out.println("\tannotateWithGenes [gcnv_input_path] [annotation_input_path] [output_path]");
+			System.out.println("\tannotateWithGenes [mode] [gcnv_input_path] [annotation_input_path] [output_path]");
 				System.out.println("\t\tAnnotate a bed file with overlapping intervals from a second bed file");
+				System.out.println("\t\t[mode] - either 'strict' or 'any'; strict requires 10%/75% exon space overlap for DEL/DUP, any requires at least 1bp overlap");
 				System.out.println("\t\t[gcnv_input_path] - gcnv file path");
-				System.out.println("\t\t[annotation_input_path] - annotation file path with columns: chr, start, end, name");
+				System.out.println("\t\t[annotation_input_path] - any: a bed file with columns: chr, start, end, name; strict: gencode gtf file uncompressed");
 				System.out.println("\t\t[output_path] - The full path to write the output file to.");
 				System.out.println();
 			System.out.println("\tcondenseBedtoolsIntersect [input_path] [output_path] [columns_to_hash_on] [columns_to_merge] [columns_to_keep]");
@@ -1679,7 +1868,12 @@ public class gCNV_helper {
 				jointCallVCF(args[1], args[2], args[3], args[4]);
 			}
 		} else if(args[0].equals("annotateWithGenes")) {
-			annotateWithGenes(args[1], args[2], args[3]);
+			if(args[1].contains("strict")) {
+				ArrayList<Gene> genes = parseGTFFile(args[3]);
+				annotateGenesPercentBased(genes, args[2], args[4]);
+			} else if(args[1].contains("any")) {
+				annotateWithGenes(args[2], args[3], args[4]);
+			}
 		} else if(args[0].equals("condenseBedtoolsIntersect")) {
 			condenseBedtoolsIntersect(args[1], args[2], args[3], args[4], args[5]);
 		} else {
