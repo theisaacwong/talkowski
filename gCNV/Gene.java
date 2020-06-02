@@ -42,11 +42,12 @@ public class Gene implements Comparable<Gene>{
 		for(int k = 0; k < this.nexons; k++) {
 			sum += ends.get(k) - starts.get(k);
 		}
-		this.nbases = sum;
+		this.nbases = sum + this.nexons;
 		
 		if(starts.size() != ends.size()) {
 			System.out.println("error");
 		}
+		
 	}
 	
 	/**
@@ -58,7 +59,7 @@ public class Gene implements Comparable<Gene>{
 	 * @return
 	 */
 	public int getNOverlap(int min1, int max1, int min2, int max2) {
-		    return Math.max(0, Math.min(max1, max2) - Math.max(min1, min2));
+		    return Math.max(0, Math.min(max1, max2) - Math.max(min1, min2) + 1);
 
 	}
 	

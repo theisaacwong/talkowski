@@ -59,7 +59,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.15";
+	public static final String VERSION = "2.16";
 	
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
@@ -192,7 +192,7 @@ public class gCNV_helper {
 		return genes;
 	}
 	
-	public void annotateGenesPercentBased(ArrayList<Gene> genes, String GCNV_INPUT, String OUTPUT_PATH) throws IOException {
+	public void annotateGenesPercentBased(ArrayList<Gene> genes, String GCNV_INPUT, String OUTPUT_PATH, String gColumnString) throws IOException {
 		ArrayList<Integer> annoStarts = new ArrayList<>();
 		ArrayList<Integer> annoEnds = new ArrayList<>();
 		HashMap<String, Integer> chrToIndex = new HashMap<>();
@@ -216,10 +216,11 @@ public class gCNV_helper {
 		Scanner sc = new Scanner(inputStream, "UTF-8");
 
 		String line = "";
-		int gcnvChr = 0;
-		int gcnvStart = 1;
-		int gcnvEnd = 2;
-		int gcnvType = 4;
+		String[] gColumnMapping = gColumnString.split(",");
+		int gcnvChr = Integer.parseInt(gColumnMapping[0]) - 1;
+		int gcnvStart = Integer.parseInt(gColumnMapping[1]) - 1;
+		int gcnvEnd = Integer.parseInt(gColumnMapping[2]) - 1;
+		int gcnvType = Integer.parseInt(gColumnMapping[3]) - 1;
 		
 		line = sc.nextLine();
 		if(line.split("\\t")[gcnvChr].equals("chr") || line.split("\\t")[gcnvChr].equals("CHROM")) {
@@ -1870,7 +1871,12 @@ public class gCNV_helper {
 		} else if(args[0].equals("annotateWithGenes")) {
 			if(args[1].contains("strict")) {
 				ArrayList<Gene> genes = parseGTFFile(args[3]);
-				annotateGenesPercentBased(genes, args[2], args[4]);
+				if(args.length==6) {
+					annotateGenesPercentBased(genes, args[2], args[4], args[5]);	
+				} else if (args.length==5) {
+					annotateGenesPercentBased(genes, args[2], args[4], "1,2,3,5");
+				}
+				
 			} else if(args[1].contains("any")) {
 				annotateWithGenes(args[2], args[3], args[4]);
 			}
