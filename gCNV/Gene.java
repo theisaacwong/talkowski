@@ -12,6 +12,12 @@ public class Gene implements Comparable<Gene>{
 	public final String ID;
 	public final int nexons;
 	public final int nbases;
+	public static String LOF = "LOF"; // should be an enum in future
+	public static String DUP_LOF = "DUP_LOF";
+	public static String COPY_GAIN = "COPY_GAIN";
+	public static String DUP = "DUP";
+	public static String DEL = "DEL";
+	public static String NONE = "NONE";
 	
 	public Gene(String name, String chr, ArrayList<Integer> rstarts, ArrayList<Integer> rends) {
 		this.name = name;
@@ -47,6 +53,32 @@ public class Gene implements Comparable<Gene>{
 		if(starts.size() != ends.size()) {
 			System.out.println("error");
 		}
+		
+	}
+	
+	/*
+	 * 
+	 */
+	public String getGnomadSchemeAnnotation(int cnvStart, int cnvEnd, String cnvType) {
+		if(cnvType.equals(DUP)) {
+			return LOF;
+		} else if (cnvType.equals(DEL)) {
+			if(this.maxEnd <= cnvEnd && this.minStart >= cnvStart) {
+				return COPY_GAIN;
+			} else if(this.maxEnd >= cnvEnd && this.minStart <= cnvStart) {
+				
+				
+				
+				
+			} else {
+				
+			}
+		} else {
+			System.out.println("error 5");
+			return "ERROR_" + cnvType + "_" + cnvStart + "_" + cnvEnd + "__" + this.toString();
+		}
+		
+		return "NULL";
 		
 	}
 	

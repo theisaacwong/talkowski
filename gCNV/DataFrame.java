@@ -11,6 +11,8 @@ import java.io.Reader;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -75,8 +77,34 @@ public class DataFrame {
 	public DataFrame(String[] colnames) {
 		this.columnMapping = new HashMap<String, Integer>();
 		this.df = new ArrayList<String[]>();
+		this.fieldNames = colnames;
+		for(int i = 0; i < colnames.length; i++) {
+			columnMapping.put(colnames[i], i);
+		}
 	}
 	
+	
+	public void sort() {
+		int chr = this.columnMapping.get("chr");
+		int start = this.columnMapping.get("start");
+		int end = this.columnMapping.get("end");
+		Collections.sort(this.df, new Comparator<String[]>() {
+			@Override
+			public int compare(String[] row1, String[] row2) {
+				if(row1[chr].equals(row2[chr])) {
+					int c = Integer.compare(Integer.parseInt(row1[start]), Integer.parseInt(row2[start]));
+					if(c == 0) {
+						return Integer.compare(Integer.parseInt(row1[end]), Integer.parseInt(row2[end]));
+					} else {
+						return c;
+					}
+					
+				} else {
+					return row1[chr].compareTo(row2[chr]);
+				}
+			}
+		});
+	}
 	
 	/**
 	 * 
@@ -269,7 +297,7 @@ public class DataFrame {
 	 * @param columnName
 	 * @return returns an arraylist of that column
 	 */
-	public ArrayList<String> get(String columnName){
+	public ArrayList<String> getColumn(String columnName){
 		ArrayList<String> rval = new ArrayList<>();
 		int colNumber = columnMapping.get(columnName);
 		for(String[] rowEntry : this.df) {
