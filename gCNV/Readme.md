@@ -1,7 +1,7 @@
 This is a repository of small scripts intended to automate the batching, clustering, and basic QC of gCNV. 
 Please use the R markdown (.Rmd) file for the full pipeline. 
 
-        Version: 2.16
+        Version: 2.17
 
         java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}
 
@@ -79,4 +79,21 @@ Please use the R markdown (.Rmd) file for the full pipeline.
 		[columns_to_hash_on] - comma separated columns to identify rows to merge. eg 1,2,3 
 		[columns_to_merge] - comma separated columns to merge into annotation column. eg 7,9
 		[columns_to_keep] - comma separated columns to keep, eg 4,5,6
+		
+        defragment [input_path] [output_path] 
+		defragment gcnv calls
+		[input_path] - input path
+		[output_path] - output path
+
+        validateSubsetAnnotations [gtfFile] [annotationSubsets] ... [annotationSubsets] 
+		check to see if the genes you will be subsetting were contained in the original annotation file
+		[gtfFile] - gencode gtfFile
+		[annotationSubsets] - space separated list of gene lists
+
+        subsetAnnotations [gcnvInput] [output] [sourceColumnName] [annotationSubsets] ... [annotationSubsets]
+		add a column for each gene list for annotated genes contained in said list
+		[gcnvInput] - input file
+		[output] - output path
+		[sourceColumnName] - column name of annotated genes
+		[annotationSubsets] - space separated list of gene lists
 
