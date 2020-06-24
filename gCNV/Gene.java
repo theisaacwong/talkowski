@@ -56,6 +56,14 @@ public class Gene implements Comparable<Gene>{
 		
 	}
 	
+	public int getNExons(int cnvStart, int cnvEnd) {
+		int nExons = 0;
+		for(int i = 0; i < nexons; i++) {
+			nExons += getNOverlap(cnvStart, cnvEnd, starts.get(i), ends.get(i)) > 0 ? 1 : 0; 
+		}
+		return nExons;
+	}
+	
 	/*
 	 * 
 	 */

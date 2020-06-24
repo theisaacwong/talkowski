@@ -15,11 +15,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Scanner;
-
-import com.univocity.parsers.tsv.TsvParser;
-import com.univocity.parsers.tsv.TsvParserSettings;
 
 /**
  * 
@@ -179,7 +175,7 @@ public class DataFrame {
 		if(header == true) {
 			for(int i = 0; i < this.fieldNames.length; i++) {
 				sb.append(this.fieldNames[i]);
-				if(i != this.fieldNames.length) {
+				if(i != this.fieldNames.length-1) {
 					sb.append("\t");
 				}
 			} sb.append("\n");
@@ -205,34 +201,7 @@ public class DataFrame {
     public Reader getFileReader(String absolutePath) throws UnsupportedEncodingException, FileNotFoundException {
         return new InputStreamReader(new FileInputStream(new File(absolutePath)), "UTF-8");
     }
-	/**
-	 * reads into memory the file at this object's path
-	 * has errors with the large formats of fireloud's manifest file
-	 * https://www.univocity.com/pages/univocity_parsers_tutorial.html#introduction-to-univocity-parsers
-	 * @throws IOException
-	 */
-	public void parseFileU() throws IOException {
-		TsvParserSettings settings = new TsvParserSettings();
-		settings.getFormat().setLineSeparator("\n");
-		settings.getFormat().setComment(comment_char.charAt(0));
 
-		// creates a TSV parser
-		TsvParser parser = new TsvParser(settings);
-
-		// parses all rows in one go.
-		List<String[]> allRows = parser.parseAll(getFileReader(FILE_PATH));
-		
-		if(header == true) {
-			this.fieldNames = allRows.get(0).clone(); // works as intended
-			for(int i = 0; i < allRows.get(0).length; i++) {
-				columnMapping.put(allRows.get(0).clone()[i], i);
-			}
-			allRows.remove(0);
-		}
-		for(int i = 0; i < allRows.size(); i++) {
-			df.add(allRows.get(i).clone());
-		}
-	}
 	
 	/**
 	 * while not technically deprecated, you should use the newer version. There is nothing wrong with this version, but the newer version uses univocity to parse the tsv rather than my homemade tsv parser

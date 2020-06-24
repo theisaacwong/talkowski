@@ -7,6 +7,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
@@ -54,7 +55,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.17";
+	public static final String VERSION = "2.18";
 
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
@@ -73,50 +74,11 @@ public class gCNV_helper {
 		System.out.println("Java version: " + System.getProperty("java.version"));
 		System.out.println("Heap Size: " + getHeapSize());
 		start();
-		g.run(args);
+		g.runBetter(args);
 		stop();
-
-		String gcnvInput = "C:/Users/iwong/Documents/MGH/CMG_2020_03_04/2020_03_23_refresh/bug_catch/annotated_3/final_callset_full_annotated_counted.tsv";
-		String output_1 = "C:/Users/iwong/Documents/MGH/CMG_2020_03_04/2020_03_23_refresh/bug_catch/annotated_3/final_callset_full_gene_list.tsv";
-		String output_2 = "C:/Users/iwong/Documents/MGH/CMG_2020_03_04/2020_03_23_refresh/bug_catch/annotated_3/final_callset_full_annotated_counted_subsetted.tsv";
-		String sourceColumnName = "genes_any_overlap";
-		ArrayList<String> annotationSubsets = new ArrayList<>();
-		String wd = "C:/Users/iwong/Documents/MGH/references/rlc_genes/";
-		annotationSubsets.add(wd+"ASC+DDD_gene_list.txt");
-		annotationSubsets.add(wd+"ClinGen.hmc_haploinsufficient.genes.list");
-		annotationSubsets.add(wd+"ClinGen.hmc_triplosensitive.genes.list");
-		annotationSubsets.add(wd+"DDG2P.hmc_lof.genes.list");
-		annotationSubsets.add(wd+"DDG2P.hmc_gof.genes.list");
-		annotationSubsets.add(wd+"DDG2P.hmc_other.genes.list");
-		annotationSubsets.add(wd+"HP0000118.HPOdb.genes.list");
-		annotationSubsets.add(wd+"gnomad.v2.1.1.lof_constrained.genes.list");
-
-		wd = "C:/Users/iwong/Documents/MGH/references/cmg_genes/";
-		annotationSubsets.add(wd+"bone_marrow_failures_+_anemias.genes.list.txt");
-		annotationSubsets.add(wd+"ccdds_genes.genes.list.txt");
-		annotationSubsets.add(wd+"cerebellar_atrophy_hypoplasia.genes.list.txt");
-		annotationSubsets.add(wd+"ciliacarta.genes.list.txt");
-		annotationSubsets.add(wd+"cmg_candidate_genes_y8q4_20200602.genes.list.txt");
-		annotationSubsets.add(wd+"diabetes.genes.list.txt");
-		annotationSubsets.add(wd+"gleeson.genes.list.txt");
-		annotationSubsets.add(wd+"ird_genes_gedi_v7.genes.list.txt");
-		annotationSubsets.add(wd+"iron_metabolism.genes.list.txt");
-		annotationSubsets.add(wd+"mendeliome2.genes.list.txt");
-		annotationSubsets.add(wd+"microcephaly.genes.list.txt");
-		annotationSubsets.add(wd+"mitochondrial.genes.list.txt");
-		annotationSubsets.add(wd+"mosaic_neuro_ocular_ectodermal_rhoa_like.genes.list.txt");
-		annotationSubsets.add(wd+"myoseq_extended_congen_myo_nmd.genes.list.txt");
-		annotationSubsets.add(wd+"neuronal_migration.genes.list.txt");
-		annotationSubsets.add(wd+"omim_morbid.genes.list.txt");
-		annotationSubsets.add(wd+"pmg.genes.list.txt");
-		annotationSubsets.add(wd+"renal_disease_rgp.genes.list.txt");
-		annotationSubsets.add(wd+"sherr_callosome.genes.list.txt");
-		 g.subsetAnnotations(gcnvInput, output_1, output_2, sourceColumnName, annotationSubsets);
-
 	}
 
-	public void convertToEnsemble(String GCNV_INPUT, String OUTPUT, String geneColumnName, String gencodeGTF)
-			throws IOException {
+	public void convertToEnsemble(String GCNV_INPUT, String OUTPUT, String geneColumnName, String gencodeGTF) throws IOException {
 		print("reading annotation file");
 
 		HashMap<String, String> nameToEnsembleID = new HashMap<>();
@@ -159,8 +121,7 @@ public class gCNV_helper {
 		gcnv.writeFile(OUTPUT, true);
 	}
 
-	public void countExons(String GCNV_INPUT, String genesColumnName, String gencodeGTF, String output)
-			throws IOException {
+	public void countExons(String GCNV_INPUT, String genesColumnName, String gencodeGTF, String output) throws IOException {
 		ArrayList<Gene> gtfGenes = parseGTFFile(gencodeGTF);
 		HashMap<String, Gene> geneNameToGene = new HashMap<>();
 		for (int i = 0; i < gtfGenes.size(); i++) {
@@ -205,8 +166,7 @@ public class gCNV_helper {
 		gcnv.writeFile(output, true);
 	}
 
-	public void simplify(String input, String OUTPUT_PATH, String columnToAggregateBy, String columnsToAggregate,
-			String columnToSplitBy) throws IOException {
+	public void simplify(String input, String OUTPUT_PATH, String columnToAggregateBy, String columnsToAggregate, String columnToSplitBy) throws IOException {
 		DataFrame gcnv = new DataFrame(input, true, "\\t", "#");
 		simplify(gcnv, OUTPUT_PATH, columnToAggregateBy, columnsToAggregate, columnToSplitBy);
 	}
@@ -226,8 +186,7 @@ public class gCNV_helper {
 	 *                            categories
 	 * @throws IOException
 	 */
-	public void simplify(DataFrame gcnv, String OUTPUT_PATH, String columnToAggregateBy, String columnsToAggregate,
-			String columnToSplitBy) throws IOException {
+	public void simplify(DataFrame gcnv, String OUTPUT_PATH, String columnToAggregateBy, String columnsToAggregate, String columnToSplitBy) throws IOException {
 		HashSet<String> splitTypes = new HashSet<>();
 		for (int i = 0; i < gcnv.nrow(); i++) {
 			splitTypes.add(gcnv.get(columnToSplitBy, i));
@@ -307,8 +266,7 @@ public class gCNV_helper {
 	 * @param annotationSubsets
 	 * @throws FileNotFoundException
 	 */
-	public void validateSubsetAnnotations(String gtfFile, ArrayList<String> annotationSubsets)
-			throws FileNotFoundException {
+	public void validateSubsetAnnotations(String gtfFile, ArrayList<String> annotationSubsets) throws FileNotFoundException {
 		ArrayList<Gene> gtfGenes = parseGTFFile(gtfFile);
 		HashSet<String> geneNames = new HashSet<>();
 		for (Gene gene : gtfGenes) {
@@ -352,8 +310,7 @@ public class gCNV_helper {
 	 * @param annotationSubsets
 	 * @throws IOException
 	 */
-	public void subsetAnnotations(String gcnvInput, String output_1, String output_2, String sourceColumnName,
-			ArrayList<String> annotationSubsets) throws IOException {
+	public void subsetAnnotations(String gcnvInput, String output_1, String output_2, String sourceColumnName, ArrayList<String> annotationSubsets) throws IOException {
 		print("reading callset");
 		DataFrame gcnv = new DataFrame(gcnvInput, true, "\\t", "#");
 
@@ -668,8 +625,7 @@ public class gCNV_helper {
 		return genes;
 	}
 
-	public void annotateGenesPercentBased(ArrayList<Gene> genes, String GCNV_INPUT, String OUTPUT_PATH,
-			String gColumnString) throws IOException {
+	public void annotateGenesPercentBased(ArrayList<Gene> genes, String GCNV_INPUT, String OUTPUT_PATH, String typeColumnName) throws IOException {
 		ArrayList<Integer> annoStarts = new ArrayList<>();
 		ArrayList<Integer> annoEnds = new ArrayList<>();
 		HashMap<String, Integer> chrToIndex = new HashMap<>();
@@ -693,21 +649,27 @@ public class gCNV_helper {
 		Scanner sc = new Scanner(inputStream, "UTF-8");
 
 		String line = "";
-		String[] gColumnMapping = gColumnString.split(",");
-		int gcnvChr = Integer.parseInt(gColumnMapping[0]) - 1;
-		int gcnvStart = Integer.parseInt(gColumnMapping[1]) - 1;
-		int gcnvEnd = Integer.parseInt(gColumnMapping[2]) - 1;
-		int gcnvType = Integer.parseInt(gColumnMapping[3]) - 1;
+		//String[] gColumnMapping = gColumnString.split(",");
+		int gcnvChr = 0; //Integer.parseInt(gColumnMapping[0]) - 1;
+		int gcnvStart = 1; //Integer.parseInt(gColumnMapping[1]) - 1;
+		int gcnvEnd = 2; //Integer.parseInt(gColumnMapping[2]) - 1;
+		int gcnvType = 4; //Integer.parseInt(gColumnMapping[3]) - 1;
 
 		line = sc.nextLine();
 		if (line.split("\\t")[gcnvChr].equals("chr") || line.split("\\t")[gcnvChr].equals("CHROM")) {
-			output.write(line + "\tgenes_strict_overlap" + "\n");
+			output.write(line + "\tgenes_any_overlap" + "\n");
+			String[] linee = line.split("\\t");
+			for(int i = 0; i < linee.length; i++) {
+				if(linee[i].equals(typeColumnName)) {
+					gcnvType = i; break;
+				}
+			}
 		} else {
 			sc.close();
 			sc = null;
 			sc = new Scanner(inputStream, "UTF-8");
 		}
-
+		
 		while (sc.hasNextLine()) {
 			line = sc.nextLine();
 			String[] linee = line.split("\\t");
@@ -873,7 +835,7 @@ public class gCNV_helper {
 		sc.close();
 	}
 
-	public void annotateGenesAnyOverlap(ArrayList<Gene> genes, String GCNV_INPUT, String OUTPUT_PATH, String gColumnString) throws IOException {
+	public void annotateGenesAnyOverlap(ArrayList<Gene> genes, String GCNV_INPUT, String OUTPUT_PATH, String typeColumnName) throws IOException {
 		ArrayList<Integer> annoStarts = new ArrayList<>();
 		ArrayList<Integer> annoEnds = new ArrayList<>();
 		HashMap<String, Integer> chrToIndex = new HashMap<>();
@@ -897,15 +859,21 @@ public class gCNV_helper {
 		Scanner sc = new Scanner(inputStream, "UTF-8");
 
 		String line = "";
-		String[] gColumnMapping = gColumnString.split(",");
-		int gcnvChr = Integer.parseInt(gColumnMapping[0]) - 1;
-		int gcnvStart = Integer.parseInt(gColumnMapping[1]) - 1;
-		int gcnvEnd = Integer.parseInt(gColumnMapping[2]) - 1;
-		int gcnvType = Integer.parseInt(gColumnMapping[3]) - 1;
+		//String[] gColumnMapping = gColumnString.split(",");
+		int gcnvChr = 0; //Integer.parseInt(gColumnMapping[0]) - 1;
+		int gcnvStart = 1; //Integer.parseInt(gColumnMapping[1]) - 1;
+		int gcnvEnd = 2; //Integer.parseInt(gColumnMapping[2]) - 1;
+		int gcnvType = 4; //Integer.parseInt(gColumnMapping[3]) - 1;
 
 		line = sc.nextLine();
 		if (line.split("\\t")[gcnvChr].equals("chr") || line.split("\\t")[gcnvChr].equals("CHROM")) {
 			output.write(line + "\tgenes_any_overlap" + "\n");
+			String[] linee = line.split("\\t");
+			for(int i = 0; i < linee.length; i++) {
+				if(linee[i].equals(typeColumnName)) {
+					gcnvType = i; break;
+				}
+			}
 		} else {
 			sc.close();
 			sc = null;
@@ -971,129 +939,6 @@ public class gCNV_helper {
 		sc.close();
 	}
 
-	/**
-	 * @deprecated
-	 * @param GCNV_INPUT
-	 * @param ANNO_INPUT
-	 * @param OUTPUT_PATH
-	 * @throws IOException
-	 */
-	public void annotateWithGenes(String GCNV_INPUT, String ANNO_INPUT, String OUTPUT_PATH) throws IOException {
-		System.out.println("Reading annotation file");
-		DataFrame anno = new DataFrame(ANNO_INPUT, true, "\\t", "#"); // annotation file
-		System.out.println("Read " + anno.nrow() + " annotations");
-
-		ArrayList<Integer> anno_start = new ArrayList<>();
-		ArrayList<Integer> anno_end = new ArrayList<>();
-		HashMap<String, Integer> chrToLine = new HashMap<>();
-		HashMap<String, String> variantToGene = new HashMap<>();
-		HashMap<String, Integer> chrToLastLine = new HashMap<>();
-
-		int annoChr = 0;
-		int annoStart = 1;
-		int annoEnd = 2;
-		int annoAnno = 3;
-
-		for (int i = 0; i < anno.nrow(); i++) {
-			anno_start.add(Integer.parseInt(anno.get(i, annoStart)));
-			anno_end.add(Integer.parseInt(anno.get(i, annoEnd)));
-			chrToLastLine.put(anno.get(i, annoChr), i);
-			if (!chrToLine.containsKey(anno.get(i, annoChr))) {
-				chrToLine.put(anno.get(i, annoChr), i);
-			}
-		}
-
-		System.out.println("writing intersections");
-		File file = new File(OUTPUT_PATH);
-		BufferedWriter output = new BufferedWriter(new FileWriter(file));
-
-		FileInputStream inputStream = new FileInputStream(GCNV_INPUT);
-		Scanner sc = new Scanner(inputStream, "UTF-8");
-
-		String line = "";
-		int gcnvChr = 0;
-		int gcnvStart = 1;
-		int gcnvEnd = 2;
-
-		try {
-			line = sc.nextLine();
-		} catch (Exception e) {
-			System.out.println(e);
-		}
-		if (line.split("\\t")[gcnvChr].equals("chr") || line.split("\\t")[0].equals("CHROM")) {
-			output.write(line + "\tgenes" + "\n");
-		} else {
-			sc.close();
-			sc = null;
-			sc = new Scanner(inputStream, "UTF-8");
-		}
-
-		while (sc.hasNextLine()) {
-			try {
-				line = sc.nextLine();
-			} catch (Exception e) {
-				System.out.println(e);
-			}
-
-			String[] linee = line.split("\\t");
-
-			String varName = linee[gcnvChr] + "_" + linee[gcnvStart] + "_" + linee[gcnvEnd];
-			if (variantToGene.containsKey(varName)) {
-				String genes = variantToGene.get(varName);
-				output.write(line + "\t" + genes);
-				output.write("\n");
-			} else {
-				String gChr = linee[gcnvChr];
-				if (!chrToLine.containsKey(gChr)) {
-					continue;
-				}
-				int gStart = Integer.parseInt(linee[gcnvStart]);
-				int gEnd = Integer.parseInt(linee[gcnvEnd]);
-
-				HashSet<String> annos = new HashSet<>();
-
-				// I tried doing binary search since starts are in sorted order, but this was
-				// easier to read and not much slower
-				int firstAnnoEndGTgStart = chrToLine.get(gChr);
-				int lastAnnoStartGTgEnd = chrToLastLine.get(gChr);
-				while ((firstAnnoEndGTgStart < anno.nrow()) && gStart > anno_end.get(firstAnnoEndGTgStart)
-						&& gChr.equals(anno.get(firstAnnoEndGTgStart, annoChr))) {
-					firstAnnoEndGTgStart++;
-				}
-				while ((lastAnnoStartGTgEnd > 0) && gEnd < anno_start.get(lastAnnoStartGTgEnd)
-						&& gChr.equals(anno.get(lastAnnoStartGTgEnd, annoChr))) {
-					lastAnnoStartGTgEnd--;
-				}
-
-				int buffer = 3;
-				firstAnnoEndGTgStart = Math.max(0, firstAnnoEndGTgStart - buffer);
-				lastAnnoStartGTgEnd = Math.min(anno.nrow() - 1, lastAnnoStartGTgEnd + buffer);
-
-				for (int i = firstAnnoEndGTgStart; i <= lastAnnoStartGTgEnd; i++) {
-					int aStart = anno_start.get(i);
-					int aEnd = anno_end.get(i);
-					if (aStart <= gEnd && aEnd >= gStart && anno.get(i, annoChr).equals(gChr)) {
-						annos.add(anno.get(i, annoAnno));
-					}
-				}
-
-				ArrayList<String> annosal = new ArrayList<>();
-				annosal.addAll(annos);
-				Collections.sort(annosal);
-
-				String genes = String.join(",", annosal);
-				if (genes.equals("")) {
-					genes = "None";
-				}
-				variantToGene.put(varName, genes);
-				output.write(line + "\t" + genes);
-				output.write("\n");
-			}
-		}
-
-		output.close();
-		sc.close();
-	}
 
 	public void jointCallVCF(String INPUT_PATH, String OUTPUT_PATH, String classColumn, String observationColumn)
 			throws IOException {
@@ -1205,8 +1050,7 @@ public class gCNV_helper {
 	 * @param metaData
 	 * @throws IOException
 	 */
-	public void labelMedianQS(DataFrame gcnv, String variantColumn, String OUTPUT_PATH, DataFrame metaData,
-			String metaDataVariantColmnm, String meteDataQSMedColumn) throws IOException {
+	public void labelMedianQS(DataFrame gcnv, String variantColumn, String OUTPUT_PATH, DataFrame metaData, String metaDataVariantColmnm, String meteDataQSMedColumn) throws IOException {
 		ArrayList<String> med_QS_values = new ArrayList<>();
 		HashMap<String, String> nameToValue = new HashMap<>();
 		for (int i = 0; i < metaData.nrow(); i++) {
@@ -2514,116 +2358,158 @@ public class gCNV_helper {
 	 * control, I'm so sorry
 	 */
 	public void printOptions() {
-		System.out.println("java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}");
+		System.out.println("java -jar gCNV_helper.jar [Command] [required argument(s)] ");
 		System.out.println();
-		System.out.println("\tgetBarcodeCounts [entityPath] [working-directory] {counts-field-name}");
-		System.out.println("\t\tDownload the read count files specified in the entity file");
-		System.out.println("\t\t[entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'");
-		System.out.println("\t\t[working-directory] - Directory to download files to. eg '/home/gCNV/'");
-		System.out.println(
-				"\t\t{counts-field-name} - optional - The name of the column in the entity file containing the counts paths. eg 'output_counts_barcode'");
-		System.out.println();
-		System.out.println("\tgetCountsMatrix [sourceFolder] [OUTPUT_PATH] {regex}");
-		System.out.println("\t\tRead in all read count files and generate a matrix file");
-		System.out.println(
-				"\t\t[sourceFolder] - Directory where read count files are located in, files can be in sub-directories.");
-		System.out.println("\t\t[OUTPUT_PATH] -  The full output path where the matrix file will be written to");
-		System.out.println(
-				"\t\t{regex} - optional - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'");
-		System.out.println();
-		System.out.println("\tgetCountsMatrixBuffered [sourceFolder] [OUTPUT_PATH] [regex] {buffer-size}");
-		System.out.println("\t\tRead in all read count files and generate a matrix file");
-		System.out.println(
-				"\t\t[sourceFolder] - Directory where read count files are located in, files can be in sub-directories.");
-		System.out.println("\t\t[OUTPUT_PATH] -  The full output path where the matrix file will be written to");
-		System.out.println("\t\t[regex] - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'");
-		System.out.println("\t\t{buffer-size} - number of lines to store in memory for each thread before writing");
-		System.out.println();
-		System.out.println("\tdownloadSegmentsVCFs [entityPath] [working-directory] {column-name}");
-		System.out.println("\t\tDownload the VCF file outputs from running the main gCNV algorithm");
-		System.out.println("\t\t[entityPath] - Full path to the entity file. eg: '/home/gCNV/sample_set_entity.tsv'");
-		System.out.println("\t\t[working-directory] - Directory to download files to. eg '/home/gCNV/'");
-		System.out.println(
-				"\t\t{column-name} - optional - The name of the column in the entity file containing the counts paths. eg 'segments_vcfs'");
-		System.out.println();
-		System.out.println("\tconvertVCFsToBEDFormat [working-directory] [output-path] {prefix-regex} {suffix-regex}");
-		System.out.println("\t\tConvert the gCNV VCF output files to BED format for svtk bedlcuster input");
-		System.out.println(
-				"\t\t[working-directory] - Directory where VCF files are located in, files can be in sub-directories.");
-		System.out.println("\t\t[ouput-path] - The output path for the final consolidated BED file");
-		System.out.println("\t\t{prefix-regex} - prefix to trim from file name, eg 'genotyped-segments-'");
-		System.out.println(
-				"\t\t{suffix-regex} - suffix used to identify VCF files, used also to trim from file name. eg '.vcf'");
-		System.out.println();
-		System.out.println("\tsvtkMatch [svtk_input] [svtk_output] [output_path]");
-		System.out.println("\t\tMatch up the gCNV meta data with the svtk bedcluster meta data and write to file");
-		System.out.println("\t\t[svtk_input] - The BED file that was given to svtk bedcluster");
-		System.out.println("\t\t[svtk_output] - The output file from svtk bedcluster");
-		System.out.println("\t\t[output_path] - The full path to write the output file to.");
-		System.out.println();
-		System.out.println("\tgetPerSampleMetrics [input_path] [column_name] [output_path]");
-		System.out.println("\t\tSum integer columns by classification of a column");
-		System.out.println("\t\t[input_path] - gcnv output file");
-		System.out.println("\t\t[column_name] - the name of column to factor by");
-		System.out.println("\t\t[output_path] - The full path to write the output file to.");
-		System.out.println();
-		System.out.println("\tlabelMedianQS [input_path] [variantColumn] [qsColumn] [output_path]");
-		System.out.println("\t\tAdd a column for the median QS value");
-		System.out.println("\t\t[input_path] - gcnv output file");
-		System.out.println("\t\t[variantColumn] - column name to aggregate by");
-		System.out.println("\t\t[qsColumn] - the name of column to calculate median with");
-		System.out.println("\t\t[output_path] - The full path to write the output file to.");
-		System.out.println();
-		System.out.println(
-				"\tjointCallVCF [input_path] [output_path] [variant_column] [sample_column] {sep} {svtpye_column}");
-		System.out.println("\t\tconvert gcnv output to joint call format");
-		System.out.println("\t\t[input_path] - gcnv output file");
-		System.out.println("\t\t[output_path] - The full path to write the output file to.");
-		System.out.println("\t\t[variant_column] - The name of the variant column");
-		System.out.println("\t\t[sample_column] - The name of the sample column");
-		System.out.println("\t\t{sep} - seperator to split samples by when writing output file. default ','");
-		System.out.println("\t\t{svtype_column} - The name of the svtype column, default 'svtype'");
-		System.out.println();
-		System.out.println("\tannotateWithGenes [mode] [gcnv_input_path] [annotation_input_path] [output_path]");
-		System.out.println("\t\tAnnotate a bed file with overlapping intervals from a second bed file");
-		System.out.println(
-				"\t\t[mode] - either 'strict' or 'any'; strict requires 10%/75% exon space overlap for DEL/DUP, any requires at least 1bp overlap");
-		System.out.println("\t\t[gcnv_input_path] - gcnv file path");
-		System.out.println(
-				"\t\t[annotation_input_path] - any: a bed file with columns: chr, start, end, name; strict: gencode gtf file uncompressed");
-		System.out.println("\t\t[output_path] - The full path to write the output file to.");
-		System.out.println();
-		System.out.println(
-				"\tcondenseBedtoolsIntersect [input_path] [output_path] [columns_to_hash_on] [columns_to_merge] [columns_to_keep]");
-		System.out.println(
-				"\t\tCondense the output of bedtools intersect by adding a column for annotations instead of having each row be a unique annotation");
-		System.out.println("\t\t[input_path] - input path");
-		System.out.println("\t\t[output_path] - output path");
-		System.out.println("\t\t[columns_to_hash_on] - comma separated columns to identify rows to merge. eg 1,2,3 ");
-		System.out.println("\t\t[columns_to_merge] - comma separated columns to merge into annotation column. eg 7,9");
-		System.out.println("\t\t[columns_to_keep] - comma separated columns to keep, eg 4,5,6");
-		System.out.println();
-		System.out.println("\tdefragment [input_path] [output_path] ");
-		System.out.println("\t\tdefragment gcnv calls");
-		System.out.println("\t\t[input_path] - input path");
-		System.out.println("\t\t[output_path] - output path");
-		System.out.println();
-		System.out.println("\tvalidateSubsetAnnotations [gtfFile] [annotationSubsets] ... [annotationSubsets] ");
-		System.out.println(
-				"\t\tcheck to see if the genes you will be subsetting were contained in the original annotation file");
-		System.out.println("\t\t[gtfFile] - gencode gtfFile");
-		System.out.println("\t\t[annotationSubsets] - space separated list of gene lists");
-		System.out.println();
-		System.out.println(
-				"\tsubsetAnnotations [gcnvInput] [output] [sourceColumnName] [annotationSubsets] ... [annotationSubsets]");
-		System.out.println("\t\tadd a column for each gene list for annotated genes contained in said list");
-		System.out.println("\t\t[gcnvInput] - input file");
-		System.out.println("\t\t[output] - output path");
-		System.out.println("\t\t[sourceColumnName] - column name of annotated genes");
-		System.out.println("\t\t[annotationSubsets] - space separated list of gene lists");
-		System.out.println();
+		InputStream in = this.getClass().getResourceAsStream("/helpMenu"); 
+		Scanner sc = new Scanner(in, "UTF-8");
+		String line = "";
+		while(sc.hasNextLine()) {
+			line = sc.nextLine();
+			System.out.println(line);
+		}
+		sc.close();
 	}
 
+	public void runBetter(String[] args) throws IOException, InterruptedException {
+		System.out.println();
+		if (args.length == 0 || args[0].contains("-help") || args[0].contains("-h")) {
+			printOptions();
+			return;
+		}
+		String toolName = args[0];
+		switch (toolName) {
+		case "annotateWithGenes" -> {
+			String mode = args[1];
+			var genes = parseGTFFile(args[2]);
+			String GCNV_INPUT = args[3];
+			String OUTPUT_PATH = args[4];
+			String typeColumnName = args[5];
+			if(mode.equals("strict")) {
+				this.annotateGenesPercentBased(genes, GCNV_INPUT, OUTPUT_PATH, typeColumnName);
+			} else if(mode.equals("any")) {
+				this.annotateGenesAnyOverlap(genes, GCNV_INPUT, OUTPUT_PATH, typeColumnName);
+			} else {
+				System.out.println("wrong input");
+			}
+		}
+		case "condenseBedtoolsIntersect" -> {
+			String INPUT_PATH = args[1];
+			String OUTPUT_PATH = args[2];
+			String columnsToHashOnString = args[3];
+			String columnsToMergeString = args[4];
+			String columnsToKeepString = args[5];
+			this.condenseBedtoolsIntersect(INPUT_PATH, OUTPUT_PATH, columnsToHashOnString, columnsToMergeString, columnsToKeepString);
+		}
+		case "convertToEnsemble" -> {
+			String GCNV_INPUT = args[1];
+			String OUTPUT = args[2];
+			String geneColumnName = args[3];
+			String gencodeGTF = args[4];
+			this.convertToEnsemble(GCNV_INPUT, OUTPUT, geneColumnName, gencodeGTF);
+		}
+		case "convertVCFsToBEDFormat" -> {
+			String wd = args[1];
+			String output = args[2];
+			String prefixRegex = args[3];
+			String suffixRegex = args[4];
+			this.convertVCFsToBEDFormat(wd, output, prefixRegex, suffixRegex);
+		}
+		case "countExons" -> {
+			String GCNV_INPUT = args[1];
+			String genesColumnName = args[2];
+			String gencodeGTF = args[3];
+			String output = args[4];
+			this.countExons(GCNV_INPUT, genesColumnName, gencodeGTF, output);
+		}
+		case "defragment" -> {
+			String match_output = args[1];
+			String defragmentation_output = args[2];
+			this.defragment(match_output, defragmentation_output);
+		}
+		case "downloadSegmentsVCFs" -> {
+			String entityPath = args[1];
+			String wd = args [2];
+			String segments_vcfs_columnName = args[3];
+			this.downloadSegmentsVCFs(entityPath, wd, segments_vcfs_columnName);
+		}
+		case "getBarcodeCounts" -> {
+			String entityPath = args[1];
+			String wd = args[2];
+			String output_counts_barcode_regex = args[3];
+			this.getBarcodeCounts(entityPath, wd, output_counts_barcode_regex);
+		}
+		case "getCountsMatrix" -> {
+			String sourceFolder = args[1];
+			String OUTPUT_PATH = args[2];
+			String countsRegex = args[3];
+			this.getCountsMatrix(sourceFolder, OUTPUT_PATH, countsRegex);
+		}
+		case "getCountsMatrixBuffered" -> {
+			String sourceFolder = args[1];
+			String OUTPUT_PATH = args[2];
+			String countsRegex = args[3];
+			int BUFFER_SIZE = Integer.parseInt(args[4]);
+			this.getCountsMatrixBuffered(sourceFolder, OUTPUT_PATH, countsRegex, BUFFER_SIZE);
+		}
+		case "getPerSampleMetrics" -> {
+			String INPUT_PATH = args[1];
+			String fieldColumn = args[2];
+			String OUTPUT_PATH = args[3];
+			boolean writeFile = true;
+			this.getPerSampleMetrics(INPUT_PATH, fieldColumn, OUTPUT_PATH, writeFile);
+		}
+		case "jointCallVCF" -> {
+			String INPUT_PATH = args[1];
+			String OUTPUT_PATH = args[2];
+			String classColumn = args[3];
+			String observationColumn = args[4];
+			String sep = args[5];
+			String svtypeColumn = args[6];
+			this.jointCallVCF(INPUT_PATH, OUTPUT_PATH, classColumn, observationColumn, sep, svtypeColumn);
+		}
+		case "labelMedianQS" -> {
+			String INPUT_PATH = args[1];
+			String variantColumn = args[2];
+			String qsColumn = args[3];
+			String OUTPUT_PATH = args[4];
+			this.labelMedianQS(INPUT_PATH, variantColumn, qsColumn, OUTPUT_PATH);
+		}
+		case "simplify" -> {
+			String input = args[1];
+			String OUTPUT_PATH = args[2];
+			String columnToAggregateBy = args[3];
+			String columnsToAggregate = args[4];
+			String columnToSplitBy = args[5];
+			this.simplify(input, OUTPUT_PATH, columnToAggregateBy, columnsToAggregate, columnToSplitBy);
+		}
+		case "subsetAnnotations" -> {
+			String gcnvInput = args[1];
+			String output_1 = args[2];
+			String output_2 = args[3];
+			String sourceColumnName = args[4];
+			ArrayList<String> annotationSubsets = new ArrayList<>();
+			for (int i = 5; i < args.length; i++) {
+				annotationSubsets.add(args[i]);
+			}
+			this.subsetAnnotations(gcnvInput, output_1, output_2, sourceColumnName, annotationSubsets);
+		}
+		case "validateSubsetAnnotations" -> {
+			String gtfFile = args[1];
+			ArrayList<String> annotationSubsets = new ArrayList<>();
+			for (int i = 2; i < args.length; i++) {
+				annotationSubsets.add(args[i]);
+			}
+			this.validateSubsetAnnotations(gtfFile, annotationSubsets);
+		}
+        default -> {
+            System.out.println("unknown command: " + toolName);
+        }
+		
+		}
+		
+		
+	}
+	
 	// /public void annotateWithGenes(String GCNV_INPUT, String ANNO_INPUT, String
 	// OUTPUT_PATH)
 	public void run(String[] args) throws IOException, InterruptedException {
