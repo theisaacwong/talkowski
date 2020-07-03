@@ -77,7 +77,288 @@ public class gCNV_helper {
 		g.runBetter(args);
 		stop();
 	}
+	
+	/**
+	 * apply quality filters
+	 * @param input
+	 * @param output
+	 * @throws IOException 
+	 */
+	public void filter(String input, String output) throws IOException {
+		DataFrame gcnv = new DataFrame(input, true, "\\t", "@");	
+		
+		boolean[] passQS = new boolean[gcnv.nrow()];
+		boolean[] passFREQ = new boolean[gcnv.nrow()];
+		boolean[] lt100rawCalls = new boolean[gcnv.nrow()];
+		boolean[] lt10highQSRareCalls = new boolean[gcnv.nrow()];
+		
+		HashMap<String, Integer> sampleToNRawCalls = new HashMap<>();
+		for(int i = 0; i < gcnv.nrow(); i++) {
+			String currSample = gcnv.get("sample", i);
+			if(sampleToNRawCalls.containsKey(currSample) == false) {
+				sampleToNRawCalls.put(currSample, 0);
+			}
+			sampleToNRawCalls.put(currSample,
+								1 + sampleToNRawCalls.get(currSample));
+		}
+		
+		for(int i = 0; i < gcnv.nrow(); i++) {
+			passQS[i] = (gcnv.get("svtype", i).equals("DUP") && Integer.parseInt(gcnv.get("QS", i)) >= 50) | 
+						(gcnv.get("svtype", i).equals("DEL") && Integer.parseInt(gcnv.get("QS", i)) >= 100) | 
+						(gcnv.get("CN", i).equals("0") && Integer.parseInt(gcnv.get("QS", i)) >= 400);
+			passFREQ[i] = Double.parseDouble(gcnv.get("vaf", i)) <= 0.01;
+			lt100rawCalls[i] = sampleToNRawCalls.get(gcnv.get("sample", i)) <= 100;
+		}
+		
+		HashMap<String, Integer> sampleToNPseudoHQCalls = new HashMap<>();
+		for(int i = 0; i < gcnv.nrow(); i++) {
+			String currSample = gcnv.get("sample", i);
+			if(sampleToNPseudoHQCalls.containsKey(currSample) == false) {
+				sampleToNPseudoHQCalls.put(currSample, 0);
+			}
+			if(passQS[i] && passFREQ[i]) {
+				sampleToNPseudoHQCalls.put( currSample,
+						1 + sampleToNPseudoHQCalls.get(currSample));	
+			}
+			
+		}
+		for(int i = 0; i < gcnv.nrow(); i++) {
+			lt10highQSRareCalls[i] = sampleToNPseudoHQCalls.get(gcnv.get("sample", i)) <= 10;
+		}
+		
+		ArrayList<String> PASS_HQ = new ArrayList<>();
+		ArrayList<String> PASS_FREQ = new ArrayList<>();
+		ArrayList<String> LT100_RAW_CALLS = new ArrayList<>();
+		ArrayList<String> LT10_HIGH_QS_RARE_CALLS = new ArrayList<>();
+		ArrayList<String> PASS_SAMPLE = new ArrayList<>();
+		ArrayList<String> HIGH_QUALITY = new ArrayList<>();
+		
+		for(int i = 0; i < gcnv.nrow(); i++) {
+			PASS_HQ.add(passQS[i] ? "TRUE" : "FALSE");
+			PASS_FREQ.add(passFREQ[i] ? "TRUE" : "FALSE");
+			LT100_RAW_CALLS.add(lt100rawCalls[i] ? "TRUE" : "FALSE");
+			LT10_HIGH_QS_RARE_CALLS.add(lt10highQSRareCalls[i] ? "TRUE" : "FALSE");
+			PASS_SAMPLE.add(lt100rawCalls[i] && lt10highQSRareCalls[i]? "TRUE" : "FALSE");
+			HIGH_QUALITY.add(passQS[i] && passFREQ[i] && lt100rawCalls[i] && lt10highQSRareCalls[i]? "TRUE" : "FALSE");
+		}
+		
+		ArrayList<String> columnNamesToAdd = new ArrayList<>();
+		ArrayList<ArrayList<String>> columnValuesToAdd = new ArrayList<>();
+		
+		columnNamesToAdd.add("lt100_raw_calls");
+		columnNamesToAdd.add("lt10_highQS_rare_calls");
+		columnNamesToAdd.add("PASS_SAMPLE");
+		columnNamesToAdd.add("PASS_FREQ");
+		columnNamesToAdd.add("PASS_QS");
+		columnNamesToAdd.add("HIGH_QUALITY");
+		
+		columnValuesToAdd.add(LT100_RAW_CALLS);
+		columnValuesToAdd.add(LT10_HIGH_QS_RARE_CALLS);
+		columnValuesToAdd.add(PASS_SAMPLE);
+		columnValuesToAdd.add(PASS_FREQ);
+		columnValuesToAdd.add(PASS_HQ);
+		columnValuesToAdd.add(HIGH_QUALITY);
+		
+		gcnv.addColumns(columnNamesToAdd, columnValuesToAdd);
+		gcnv.writeFile(output, true);
 
+	}
+	
+	public void getBEDtrack(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
+		ArrayList<Path> barcodeCountsPaths = new ArrayList<>();
+		ArrayList<String> barcodeCountsFiles = new ArrayList<>();
+		ArrayList<String> sampleNames = new ArrayList<>();
+
+		System.out.print("finding files.\t");
+		Path p = Paths.get(sourceFolder);
+		final int maxDepth = 10;
+		Stream<Path> matches = Files.find(p, maxDepth,
+				(path, basicFileAttributes) -> String.valueOf(path).endsWith(countsRegex));
+		matches.filter(s -> s.getFileName().toString().contains(countsRegex)).forEach(barcodeCountsPaths::add);
+		matches.close();
+		for (Path fp : barcodeCountsPaths) {
+			barcodeCountsFiles.add(fp.toAbsolutePath().toString());
+			sampleNames.add(fp.getFileName().toString().replaceAll(countsRegex, ""));
+		}
+		System.out.println("found " + sampleNames.size() + " files");
+
+		System.out.println("reading files. \t");
+
+		// toRead functions as a synchronized queue so each thread knows which file to
+		// read next
+		// each dataframe is then mapped to a unique index number so that the arraylist
+		// of dataframes
+		// can be assembled again in order even though each one is read out of order
+		List<Integer> toRead = Collections.synchronizedList(new ArrayList<Integer>());
+		Map<Integer, ArrayList<String>> doneReading2 = new ConcurrentHashMap<>();
+		for (int i = 0; i < sampleNames.size(); i++) {
+			toRead.add(i);
+		}
+		int N_THREADS = Runtime.getRuntime().availableProcessors();
+		ExecutorService exServer = Executors.newFixedThreadPool(N_THREADS);
+		int totalNFiles = toRead.size();
+		for (int i = 0; i < N_THREADS; i++) {
+			exServer.execute(new Runnable() {
+				@Override
+				public void run() {
+					while (toRead.size() > 0) {
+						int currentFile = toRead.remove(0);
+						try {
+							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
+							doneReading2.put(currentFile, countsDF.getColumn(countsDF.fieldNames[3])); // TODO: change to shallow copy?
+							progressPercentage(totalNFiles - toRead.size(), totalNFiles,
+									barcodeCountsFiles.get(currentFile));
+							countsDF = null; // java gc is a fickle mistress
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+				}
+			});
+		}
+		exServer.shutdown();
+		exServer.awaitTermination(6, TimeUnit.DAYS);
+
+//		ArrayList<String> countsArrayList = new ArrayList<>();
+//		for (int i = 0; i < doneReading2.size(); i++) {
+//			countsArrayList.add(doneReading2.get(i));
+//		}
+
+		System.out.println("done reading files");
+
+		// 'labels' is the exon labels, / column names
+		System.out.print("generating counts matrix. \t");
+		ArrayList<String> chr = new ArrayList<>();
+		ArrayList<String> start = new ArrayList<>();
+		ArrayList<String> end = new ArrayList<>();
+		DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(0), true, "\\t", "@");
+		for (int i = 0; i < countsDF.nrow(); i++) {
+			chr.add(countsDF.get(i, 0));
+			start.add(countsDF.get(i, 1));
+			end.add(countsDF.get(i, 2));
+		}
+		System.out.println("done generating counts matrix");
+
+		// for sanity checking, number should all appropriately match
+		System.out.println("sampleNames.size()\t" + sampleNames.size());
+		System.out.println("countsArrayList.size()\t" + doneReading2.get(0).size());
+		System.out.println("labels.size()\t" + chr.size());
+		System.out.println("writing counts matrix");
+
+		File file = new File(OUTPUT_PATH);
+		BufferedWriter output = new BufferedWriter(new FileWriter(file));
+
+		// write the header
+		StringBuilder header = new StringBuilder();
+		header.append("#chr\tstart\tend\t");
+		for(int i = 0; i < sampleNames.size()-1; i++) {
+			header.append(sampleNames.get(i));
+			header.append("\t");
+		}
+		header.append(sampleNames.get(sampleNames.size()-1));
+		header.append("\n");
+		output.write(header.toString());
+		
+		
+		for(int r = 0; r < chr.size(); r++) {
+			StringBuilder line = new StringBuilder();
+			line.append(chr.get(r));
+			line.append("\t");
+			line.append(start.get(r));
+			line.append("\t");
+			line.append(end.get(r));
+			line.append("\t");
+			for(int c = 0; c < sampleNames.size()-1; c++) {
+				line.append(doneReading2.get(c).get(r));
+				line.append("\t");
+			}
+			line.append(doneReading2.get(sampleNames.size()-1).get(r));
+			line.append("\n");
+			output.write(line.toString());
+		}
+		
+		output.close();
+	}
+	
+	public void transposeTSV(String INPUT, String OUTPUT) throws IOException {
+		ArrayList<String[]> rows = new ArrayList<>();
+		
+		
+		FileInputStream inputStream = new FileInputStream(INPUT);
+		Scanner sc = new Scanner(inputStream, "UTF-8");
+
+		print("reading:");
+		stop();
+		while (sc.hasNextLine()) {
+			rows.add(sc.nextLine().split("\\t"));
+		}
+		sc.close();
+		print("done reading");
+		stop();
+		
+		print("writing");
+		
+		BufferedWriter output = null;
+		File file = new File(OUTPUT);
+		output = new BufferedWriter(new FileWriter(file));
+		
+		int nrow = rows.get(0).length; 
+		int ncol = rows.size();
+		print("nrow: " + nrow);
+		print("ncol: " + ncol);
+		for(int r = 0; r < nrow; r++) {
+			StringBuilder line = new StringBuilder();
+			for(int c = 0; c < ncol-1; c++) {
+				line.append(rows.get(c)[r]);
+				line.append("\t");
+			}
+			line.append(rows.get(ncol-1)[r]);
+			line.append("\n");
+			output.write(line.toString());
+		}
+		output.close();
+		
+		
+	}
+
+	public void addGnomadAnnotations(String GCNV_INPUT, String OUTPUT, String gencodeGTF, String geneColumnName) throws IOException {
+		print("reading annotation file");
+		ArrayList<Gene> geneList = parseGTFFile(gencodeGTF);
+		HashMap<String, Gene> genes = new HashMap<>();
+		for(int i = 0; i < geneList.size(); i++) {
+			genes.put(geneList.get(i).name, geneList.get(i));
+		}
+		
+		print("readint callset");
+		DataFrame gcnv = new DataFrame(GCNV_INPUT, true, "\\t", "#");
+		
+		print("writing annotations");
+		ArrayList<String> annotationColumn = new ArrayList<>();
+		
+		for(int i = 0; i < gcnv.nrow(); i++) {
+			String[] currentGenes = gcnv.get(geneColumnName, i).split(",");
+			ArrayList<String> annotations = new ArrayList<>();
+			
+			int gStart = Integer.parseInt(gcnv.get("start", i));
+			int gEnd = Integer.parseInt(gcnv.get("end", i));
+			String gSvtype = gcnv.get("svtype", i);
+			
+			for(String gene : currentGenes) {
+				if(gene.equals("None")) {
+					annotations.add("None");
+				} else {
+					annotations.add(genes.get(gene).getGnomadSchemeAnnotation(gStart, gEnd, gSvtype));	
+				}
+			}
+			
+			annotationColumn.add(String.join(",", annotations));
+		}
+		
+		
+		gcnv.addColumn(geneColumnName + "_gnomAD_annotation", annotationColumn);
+		gcnv.writeFile(OUTPUT, true);
+	}
+	
 	public void convertToEnsemble(String GCNV_INPUT, String OUTPUT, String geneColumnName, String gencodeGTF) throws IOException {
 		print("reading annotation file");
 
@@ -388,8 +669,240 @@ public class gCNV_helper {
 		simplify(gcnv, OUTPUT_PATH, columnToAggregateBy, columnsToAggregate, columnToSplitBy);
 	}
 
+	public void defragment3(String input, String output, String filtered_intervals) throws IOException {
+		double EXTENSION_VALUE = 0.4; // by what percent of cnv width to extend look behind/ahead distance for overlapping cnvs
+		int MINIMUM_QS = 20;
+		int CHR = 0;
+		int START = 1;
+		int END = 2;
+		DataFrame gcnv = new DataFrame(input, true, "\\t", "@");
+		gcnv.fieldNames[0] = "chr";
+		gcnv.columnMapping.put("chr", 0);
+		gcnv.columnMapping.remove("#chrom");
+		gcnv.sort();
+		
+		print("reading filtered intervals");
+		//Read filtered intervals, column 1 is name of cluster, column 2 is file
+		DataFrame filteredIntervalsManifest = new DataFrame(filtered_intervals, true, "\\t", "#");
+		HashMap<String, DataFrame> batchToFilteredIntervalDF = new HashMap<>();
+		for(int i = 0; i < filteredIntervalsManifest.nrow(); i++) {
+			String batchName = filteredIntervalsManifest.get(i, 0);
+			String fiPath = filteredIntervalsManifest.get(i, 1);
+			//check that file exists
+			if(new File(fiPath).isFile()) {
+				batchToFilteredIntervalDF.put(batchName, new DataFrame(fiPath, false, "\\t", "@"));
+			}
+		}
+		print("done");
+		stop();
+		
+		// get batch indexes
+		HashMap<String, ArrayList<Integer>> batchToIndexes = new HashMap<>(); 
+		for(int i = 0; i < gcnv.nrow(); i++) {
+			boolean passQS = (Integer.parseInt(gcnv.get("QS", i)) >= MINIMUM_QS);
+			if(passQS == false) {
+				continue;
+			}
+			
+			if(!batchToIndexes.containsKey(gcnv.get("batch", i))) {
+				batchToIndexes.put(gcnv.get("batch", i), new ArrayList<>());
+			}
+			batchToIndexes.get(gcnv.get("batch", i)).add(i);
+		}
+		
+		// check to make sure each 
+		for(String batch : batchToIndexes.keySet()) {
+			if(!batchToFilteredIntervalDF.containsKey(batch)) {
+				print("Warning! " + batch + " does not have a filtered interval");
+			}
+		}
+		
+		ArrayList<Integer> allIndexesDefragged = new ArrayList<>();
+		DataFrame allDefragmentedCalls = new DataFrame(gcnv.fieldNames);
+		
+		//bin == intervals, 
+		for(String batch : batchToIndexes.keySet()) {
+			print(batch);
+			DataFrame currBin = batchToFilteredIntervalDF.get(batch);
+			
+//			ArrayList<Integer> extendedBinStarts = new ArrayList<>();
+//			ArrayList<Integer> extendedBinEnds = new ArrayList<>();
+			
+			HashMap<Integer, Integer> gcnvIndexToExtendedBinStartCoords = new HashMap<>();
+			HashMap<Integer, Integer> gcnvIndexToExtendedBinEndCoords = new HashMap<>();
+			
+			//convert to intervals coordinates
+			HashMap<String, Integer> gCNVtoStartBin = new HashMap<>();
+			HashMap<String, Integer> gCNVtoEndBin = new HashMap<>();
+			HashMap<String, ArrayList<Integer>> binChrToStarts = new HashMap<>();
+			HashMap<String, ArrayList<Integer>> binChrToEnds = new HashMap<>();
+			
+			// read the interval/bin file, storing chr-start and chr-end pairings, sort ascending
+			for(int i = 0; i < currBin.nrow(); i++) {
+				String currChr = currBin.get(i, CHR);
+				String currStart = currBin.get(i, START);
+				String currEnd = currBin.get(i, END);
+				if(!binChrToStarts.containsKey(currChr)) {
+					binChrToStarts.put(currChr, new ArrayList<>());
+					binChrToEnds.put(currChr, new ArrayList<>());
+				}
+				binChrToStarts.get(currChr).add(Integer.parseInt(currStart));
+				binChrToEnds.get(currChr).add(Integer.parseInt(currEnd));
+			}
+			
+			for(String chr : binChrToStarts.keySet()) {
+				Collections.sort(binChrToStarts.get(chr));
+				Collections.sort(binChrToEnds.get(chr));
+			}
+			
+			// convert each gcnv start/end to bin start/end by finding closest value less than/greater than, then extend
+			for(Integer i : batchToIndexes.get(batch)) {
+				String currChr = gcnv.get("chr", i);
+				Integer currEnd = Integer.parseInt(gcnv.get("end", i));
+				Integer currStart = Integer.parseInt(gcnv.get("start", i));
+				
+				String currKeyEnd = currChr + "_" + currEnd;
+				if(!gCNVtoEndBin.containsKey(currKeyEnd)) {
+					int rawIndex = Collections.binarySearch(binChrToEnds.get(currChr), currEnd);
+					int index = rawIndex >= 0 ? rawIndex : Math.min(binChrToEnds.get(currChr).size()-1, -1 - rawIndex );
+					Integer closestBinEnd = binChrToEnds.get(currChr).get(index);
+					gCNVtoEndBin.put(currKeyEnd, closestBinEnd);
+				} 
+
+				String currKeyStart = currChr + "_" + currStart;
+				if(!gCNVtoStartBin.containsKey(currKeyStart)) {
+					int rawIndex = Collections.binarySearch(binChrToStarts.get(currChr), currStart);
+					int index = rawIndex >= 0 ? rawIndex : Math.max(0, -2 - rawIndex);
+					Integer closestBinStart = binChrToStarts.get(currChr).get(index);
+					gCNVtoStartBin.put(currKeyStart, closestBinStart);
+				} 
+				
+				//width and extension calculation
+				double width = gCNVtoEndBin.get(currKeyEnd) - gCNVtoStartBin.get(currKeyStart) + 1;
+//				extendedBinStarts.add((int)(gCNVtoStartBin.get(currKeyStart) - (width * EXTENSION_VALUE)));
+//				extendedBinEnds.add((int) (gCNVtoEndBin.get(currKeyEnd) + (width * EXTENSION_VALUE)));
+				
+				gcnvIndexToExtendedBinStartCoords.put(i, (int)(gCNVtoStartBin.get(currKeyStart) - (width * EXTENSION_VALUE)));
+				gcnvIndexToExtendedBinEndCoords.put(i, (int) (gCNVtoEndBin.get(currKeyEnd) + (width * EXTENSION_VALUE)));
+				
+			}
+			
+			// for each unique sample, get map of sample to indexes
+			HashMap<String, ArrayList<Integer>> sampleToIndexes = new HashMap<>();
+			for(Integer i : batchToIndexes.get(batch)) {
+				String currSample = gcnv.get("sample", i);
+				if (!sampleToIndexes.containsKey(currSample)) {
+					sampleToIndexes.put(currSample, new ArrayList<>());
+				}
+				sampleToIndexes.get(currSample).add(i);
+			}
+			
+			DataFrame batchDefragmentedCalls = new DataFrame(gcnv.fieldNames);
+			HashSet<Integer> batchIndexesDefragmented = new HashSet<>();
+			
+
+			// Light help you, the below code of Shai'tan's own
+			// main defragmentation code - currently not super worried about runtime
+			// sampleLoop:
+			for (String currentSample : sampleToIndexes.keySet()) {
+
+				// for each CNV
+				// cnvLoop:
+				for (int i = 0; i < sampleToIndexes.get(currentSample).size();) {
+					int x = sampleToIndexes.get(currentSample).get(i); // convert to gcnv row index
+
+					ArrayList<Integer> currentFragment = new ArrayList<>();
+					currentFragment.add(x);
+
+					// keep track of largest/current fragment end
+//					int currentFragmentEnd = extendedBinEnds.get(x);
+					int currentFragmentEnd = gcnvIndexToExtendedBinEndCoords.get(x);
+					int k = ++i; // lookahead amount for current cnv fragment
+					while (k < sampleToIndexes.get(currentSample).size()) {
+						int y = sampleToIndexes.get(currentSample).get(k);
+						// check for overlap
+						if (gcnv.get("chr", x).equals(gcnv.get("chr", y)) && gcnv.get("CN", x).equals(gcnv.get("CN", y))
+//								&& currentFragmentEnd >= extendedBinStarts.get(y)
+								&& currentFragmentEnd >= gcnvIndexToExtendedBinStartCoords.get(y)
+								&& Integer.parseInt(gcnv.get("start", x)) <= Integer.parseInt(gcnv.get("end", y))) {
+
+							currentFragment.add(y);
+//							currentFragmentEnd = Math.max(currentFragmentEnd, extendedBinEnds.get(y));
+							currentFragmentEnd = Math.max(currentFragmentEnd, gcnvIndexToExtendedBinEndCoords.get(y));
+							batchIndexesDefragmented.add(y);
+							k++;
+						} else {
+//							System.out.println("nope!");
+							break;
+						}
+					}
+					i = k;
+
+					if (currentFragment.size() != 1) {
+						batchIndexesDefragmented.add(x);
+						int newStart = Integer.parseInt(gcnv.get("start", currentFragment.get(0)));
+						int newEnd = 0;
+						int newQA = 0;
+						int newQS = 0;
+						String newQSS = gcnv.get("QSS", currentFragment.get(0));
+						String newQSE = gcnv.get("QSE", currentFragment.get(currentFragment.size() - 1));
+						for (int n = 0; n < currentFragment.size(); n++) {
+							newStart = Math.min(newStart, Integer.parseInt(gcnv.get("start", currentFragment.get(n))));
+							newEnd = Math.max(newEnd, Integer.parseInt(gcnv.get("end", currentFragment.get(n))));
+							newQA += Integer.parseInt(gcnv.get("QA", currentFragment.get(n)));
+							newQS = Math.max(newQS, Integer.parseInt(gcnv.get("QS", currentFragment.get(n))));
+						}
+						newQA /= currentFragment.size();
+						String[] newRow = new String[gcnv.fieldNames.length];
+						for (int s = 0; s < newRow.length; s++) {
+							newRow[s] = gcnv.get(x)[s];
+						}
+						newRow[gcnv.columnMapping.get("start")] = Integer.toString(newStart);
+						newRow[gcnv.columnMapping.get("end")] = Integer.toString(newEnd);
+						newRow[gcnv.columnMapping.get("QA")] = Integer.toString(newQA);
+						newRow[gcnv.columnMapping.get("QS")] = Integer.toString(newQS);
+						newRow[gcnv.columnMapping.get("QSS")] = newQSS;
+						newRow[gcnv.columnMapping.get("QSE")] = newQSE;
+						batchDefragmentedCalls.add(newRow);
+					} 
+
+				}
+			}
+
+			allIndexesDefragged.addAll(batchIndexesDefragmented);
+			if(allDefragmentedCalls.df.size() == 0) {
+				allDefragmentedCalls = batchDefragmentedCalls;
+			} else {
+				allDefragmentedCalls.rbind(batchDefragmentedCalls);
+			}
+			
+		}
+		
+		
+		Collections.sort(allIndexesDefragged, Collections.reverseOrder());
+		for (int i = 0; i < allIndexesDefragged.size(); i++) {
+			gcnv.df.remove((int) (allIndexesDefragged.get(i)));
+		}
+
+		ArrayList<String> boolDefragmented_1 = new ArrayList<>();
+		for (int i = 0; i < gcnv.nrow(); i++) {
+			boolDefragmented_1.add("FALSE");
+		}
+		gcnv.addColumn("defragmented", boolDefragmented_1);
+
+		ArrayList<String> boolDefragmented_2 = new ArrayList<>();
+		for (int i = 0; i < allDefragmentedCalls.nrow(); i++) {
+			boolDefragmented_2.add("TRUE");
+		}
+		allDefragmentedCalls.addColumn("defragmented", boolDefragmented_2);
+
+		gcnv.rbind(allDefragmentedCalls);
+		gcnv.sort();
+		gcnv.writeFile(output, true);
+		
+	}
+	
 	/**
-	 * TODO: figure out if the filtered intervals are needed or not
 	 * 
 	 * @param match_output
 	 * @param defragmentation_output
@@ -403,7 +916,9 @@ public class gCNV_helper {
 		gcnv.columnMapping.put("chr", 0);
 		gcnv.columnMapping.remove("#chrom");
 		gcnv.sort();
-
+		
+		
+		
 		// extend coordinates
 		ArrayList<Integer> extendedStarts = new ArrayList<>();
 		ArrayList<Integer> extendedEnds = new ArrayList<>();
@@ -450,8 +965,7 @@ public class gCNV_helper {
 
 		// Light help you, the below code of Shai'tan's own
 		// main defragmentation code - currently not super worried about runtime
-		// for each batch
-		// batchLoop:
+		// sampleLoop:
 		for (String currentSample : sampleToIndexes.keySet()) {
 
 			// for each CNV
@@ -657,7 +1171,7 @@ public class gCNV_helper {
 
 		line = sc.nextLine();
 		if (line.split("\\t")[gcnvChr].equals("chr") || line.split("\\t")[gcnvChr].equals("CHROM")) {
-			output.write(line + "\tgenes_any_overlap" + "\n");
+			output.write(line + "\tgenes_strict_overlap" + "\n");
 			String[] linee = line.split("\\t");
 			for(int i = 0; i < linee.length; i++) {
 				if(linee[i].equals(typeColumnName)) {
@@ -1188,8 +1702,7 @@ public class gCNV_helper {
 	public String toString() {
 		return String.join(" ", initializationArgs) + "\n" + date;
 	}
-
-	// TODO: MAKE GENERIC
+	
 	/**
 	 * currently, I am hard-coding things, but in the future I can make the maps
 	 * dynamically
@@ -1270,6 +1783,15 @@ public class gCNV_helper {
 			strand_newField.add(strand_map.get(svtkOutput.get("call_name", i)));
 		}
 
+		//add batch info
+		ArrayList<String> batch_newField = new ArrayList<>();
+		Pattern batchPattern = Pattern.compile(".*(?=_cnv_)");
+		for(int i = 0; i < svtkOutput.nrow(); i++) {
+			Matcher batchMatcher = batchPattern.matcher(svtkOutput.get("call_name", i));
+			batch_newField.add(batchMatcher.find() ? batchMatcher.group() : "NA");
+		}
+		
+		
 		ArrayList<String> columnNames = new ArrayList<>();
 		columnNames.add("CN");
 		columnNames.add("GT");
@@ -1280,6 +1802,7 @@ public class gCNV_helper {
 		columnNames.add("QSS");
 		columnNames.add("ploidy");
 		columnNames.add("strand");
+		columnNames.add("batch");
 
 		ArrayList<ArrayList<String>> columnValues = new ArrayList<>();
 		columnValues.add(CN_newField);
@@ -1291,6 +1814,7 @@ public class gCNV_helper {
 		columnValues.add(QSS_newField);
 		columnValues.add(ploidy_newField);
 		columnValues.add(strand_newField);
+		columnValues.add(batch_newField);
 
 		svtkOutput.addColumns(columnNames, columnValues);
 		svtkOutput.writeFile(match_output, true);
@@ -2192,14 +2716,14 @@ public class gCNV_helper {
 	 */
 	public static void downloadFiles(String filesFile, String pathToDownloadToUnix) throws InterruptedException {
 		String[] command;
-		if (System.getProperty("os.name").contains("Windows")) {
+		if (System.getProperty("os.name").contains("indows")) {
 			String[] dosCommand = { "bash", "-c", "'cat", filesFile, "|", "gsutil", "-m", "cp", "-I",
 					pathToDownloadToUnix, "'" };
 			command = dosCommand;
 		} else {
 			System.out.println(
-					"WARNING: this download functionality has not been tested on macOS, please report any issues");
-			String[] unixCommand = { "cat", filesFile, "|", "gsutil", "-m", "cp", "-I", pathToDownloadToUnix };
+					"WARNING: this download functionality has not been tested on macOS/linux, please report any issues");
+			String[] unixCommand = { "cat", filesFile, "|", "gsutil", "cp", "-I", pathToDownloadToUnix };
 			command = unixCommand;
 		}
 		System.out.println(String.join(" ", command));
@@ -2369,15 +2893,44 @@ public class gCNV_helper {
 		}
 		sc.close();
 	}
+	
+	public void printOptionsShort() {
+		System.out.println("java -jar gCNV_helper.jar [Command] [required argument(s)] ");
+		System.out.println();
+		InputStream in = this.getClass().getResourceAsStream("/helpMenuShort"); 
+		Scanner sc = new Scanner(in, "UTF-8");
+		String line = "";
+		while(sc.hasNextLine()) {
+			line = sc.nextLine();
+			System.out.println(line);
+		}
+		sc.close();
+	}
 
 	public void runBetter(String[] args) throws IOException, InterruptedException {
 		System.out.println();
-		if (args.length == 0 || args[0].contains("-help") || args[0].contains("-h")) {
-			printOptions();
+		if (args.length == 0) {
+			printOptionsShort();
 			return;
 		}
 		String toolName = args[0];
 		switch (toolName) {
+		case "-help" -> {
+			printOptions();
+		}
+		case "--help" -> {
+			printOptions();
+		}
+		case "-h" -> {
+			printOptions();
+		}
+		case "addGnomadAnnotations" -> {
+			String GCNV_INPUT = args[1];
+			String OUTPUT = args[2];
+			String gencodeGTF = args[3];
+			String geneColumnName = args[4];
+			this.addGnomadAnnotations(GCNV_INPUT, OUTPUT, gencodeGTF, geneColumnName);
+		}
 		case "annotateWithGenes" -> {
 			String mode = args[1];
 			var genes = parseGTFFile(args[2]);
@@ -2424,7 +2977,12 @@ public class gCNV_helper {
 		case "defragment" -> {
 			String match_output = args[1];
 			String defragmentation_output = args[2];
-			this.defragment(match_output, defragmentation_output);
+			if(args.length==3) {
+				this.defragment(match_output, defragmentation_output);	
+			} else {
+				String filteredIntervals = args[3];
+				this.defragment3(match_output, defragmentation_output, filteredIntervals);
+			}
 		}
 		case "downloadSegmentsVCFs" -> {
 			String entityPath = args[1];
@@ -2432,11 +2990,22 @@ public class gCNV_helper {
 			String segments_vcfs_columnName = args[3];
 			this.downloadSegmentsVCFs(entityPath, wd, segments_vcfs_columnName);
 		}
+		case "filter" -> {
+			String input = args[1];
+			String output = args[2];
+			this.filter(input, output);
+		}
 		case "getBarcodeCounts" -> {
 			String entityPath = args[1];
 			String wd = args[2];
 			String output_counts_barcode_regex = args[3];
 			this.getBarcodeCounts(entityPath, wd, output_counts_barcode_regex);
+		}
+		case "getBEDtrack" -> {
+			String sourceFolder = args[1];
+			String OUTPUT_PATH = args[2];
+			String countsRegex = args[3];
+			this.getBEDtrack(sourceFolder, OUTPUT_PATH, countsRegex);
 		}
 		case "getCountsMatrix" -> {
 			String sourceFolder = args[1];
@@ -2493,6 +3062,17 @@ public class gCNV_helper {
 			}
 			this.subsetAnnotations(gcnvInput, output_1, output_2, sourceColumnName, annotationSubsets);
 		}
+		case "svtkMatch" -> {
+			String svtk_input = args[1];
+			String svtk_output = args[2];
+			String output = args[3];
+			this.svtkMatch(svtk_input, svtk_output, output);
+		}
+		case "transposeTSV" -> {
+			String INPUT = args[1];
+			String OUTPUT = args[2];
+			this.transposeTSV(INPUT, OUTPUT);
+		}
 		case "validateSubsetAnnotations" -> {
 			String gtfFile = args[1];
 			ArrayList<String> annotationSubsets = new ArrayList<>();
@@ -2510,8 +3090,13 @@ public class gCNV_helper {
 		
 	}
 	
-	// /public void annotateWithGenes(String GCNV_INPUT, String ANNO_INPUT, String
-	// OUTPUT_PATH)
+
+	/**
+	 * @deprecated
+	 * @param args
+	 * @throws IOException
+	 * @throws InterruptedException
+	 */
 	public void run(String[] args) throws IOException, InterruptedException {
 		System.out.println();
 		if (args.length == 0 || args[0].contains("-help") || args[0].contains("-h")) {

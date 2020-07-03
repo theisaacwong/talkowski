@@ -68,26 +68,33 @@ public class Gene implements Comparable<Gene>{
 	 * 
 	 */
 	public String getGnomadSchemeAnnotation(int cnvStart, int cnvEnd, String cnvType) {
-		if(cnvType.equals(DUP)) {
+
+		if(cnvType.equals(DEL)) {
 			return LOF;
-		} else if (cnvType.equals(DEL)) {
+		} else if (cnvType.equals(DUP)) {
 			if(this.maxEnd <= cnvEnd && this.minStart >= cnvStart) {
 				return COPY_GAIN;
-			} else if(this.maxEnd >= cnvEnd && this.minStart <= cnvStart) {
-				
-				
-				
-				
 			} else {
-				
+				boolean startInExon = false;
+				boolean endInExon = false;
+				for(int i = 0; i < this.nexons; i++) {
+					if(this.starts.get(i) <= cnvStart && cnvStart <= this.ends.get(i)) {
+						startInExon = true;
+					}
+					if(this.starts.get(i) <= cnvEnd && cnvEnd <= this.ends.get(i)) {
+						endInExon = true;
+					}
+				}
+				if(startInExon && endInExon) {
+					return LOF;
+				} else {
+					return DUP_LOF;
+				}
 			}
 		} else {
-			System.out.println("error 5");
+			System.out.println("error 5: unknown svtype: " + cnvType);
 			return "ERROR_" + cnvType + "_" + cnvStart + "_" + cnvEnd + "__" + this.toString();
 		}
-		
-		return "NULL";
-		
 	}
 	
 	/**
