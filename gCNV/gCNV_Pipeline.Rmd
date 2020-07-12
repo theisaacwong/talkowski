@@ -1,12 +1,12 @@
 ---
-title: "gCNV_Pipeline"
+title: "gCNV_pipeline_2020_07_06"
 output: html_document
 author: Isaac Wong
-version: 2.10
+version: 2.15
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
 This workflow is an attempt to provide instructions on running gCNV. Please let me know of any isses you run into or any processes you want improved/automated. Please ensure you have downloaded the most recent files from my github: https://github.com/theisaacwong/talkowski/tree/master/gCNV. You should be able to run the pipeline chunk by chunk.Basic GATK is below:
@@ -31,6 +31,7 @@ Here is a WDL to run it: https://portal.firecloud.org/?return=terra#methods/coun
 To begin, load the required packages and some functions
 ```{r}
 library("stringr")
+library("plyr")
 library("rgl")
 library("factoextra")
 library("tidyverse")
@@ -42,91 +43,13 @@ library("parallel")
 library("gridExtra")
 library("wesanderson")
 library("ggplot2")
+library("wesanderson")
+library("factoextra")
+library("ClusterR")
+library("dbscan")
 
 
-srt <- function(x){
-  sort(table(x), decreasing = TRUE)
-}
-
-deFragment <- function(tab, bins, extension=0.3){
-    tab$defragged <- FALSE
-    tab$cprotect <- FALSE    
-    gr_tab <- GRanges(paste0(tab$sample, "::::", tab$chr), IRanges(tab$start, tab$end))
-    bs_tab <- toBinSpace(gr_tab, bins, pattern="::::")
-    values(bs_tab) <- tab    
-    wid_bs <- width(bs_tab)
-    bs_tab_ext <- GRanges(seqnames(bs_tab), IRanges(start(bs_tab) - round(wid_bs*extension), end(bs_tab) + round(wid_bs*extension)))
-    values(bs_tab_ext) <- values(bs_tab)    ### Find overlaps now produced by extension
-    ol <- findOverlaps(bs_tab_ext, bs_tab_ext)
-    ol <- ol[-which(queryHits(ol)==subjectHits(ol))]    ### Extract CN of overlaps [If there is overlap introduced by extension]
-    if(length(ol)>0){
-      pairing <- unique(t(apply(cbind(queryHits(ol), subjectHits(ol)), 1, sort)))
-      pairing <- cbind(pairing, bs_tab_ext$CN[pairing[,1]], bs_tab_ext$CN[pairing[,2]])
-      ### Subset to pairs of compatible CN when extended
-      paired <- pairing[pairing[,3]==pairing[,4],, drop=FALSE]        
-      if(dim(paired)[1]>0){
-        ### Create merged-pair with un-extended boundaries
-        bs_paired <- GRanges(seqnames(bs_tab)[as.numeric(paired[,1])], 
-                             IRanges(apply(cbind(start(bs_tab[as.numeric(paired[,1])]), start(bs_tab[as.numeric(paired[,2])])), 1, min),
-                                     apply(cbind(end(bs_tab[as.numeric(paired[,1])]), end(bs_tab[as.numeric(paired[,2])])), 1, max)))
-        bs_paired$CN <- bs_tab_ext$CN[as.numeric(paired[,1])]            ### Check that merged-pair does not bulldoze inconsistent CN calls in the middle
-        ol_bull <- findOverlaps(bs_paired, bs_tab)
-        clobber <- sapply(1:length(bs_paired), function(x){
-          sum(bs_tab$CN[subjectHits(ol_bull)[queryHits(ol_bull)==x]] != bs_paired$CN[x])
-        })
-        protect <- sapply(unique(subjectHits(ol_bull)), function(x){
-          sum(bs_tab$CN[x] != bs_paired$CN[unique(queryHits(ol_bull)[subjectHits(ol_bull)==x])])
-        })
-        ### Annotate for when there was clobber protection
-        tab$cprotect[unique(subjectHits(ol_bull))] <- protect>0            ### Reduce non-bulldozing pairs
-        bs_paired_noclobber <- bs_paired[clobber==0]
-        bs_paired_red <- GenomicRanges::reduce(bs_paired_noclobber)            ### Re-insert call-level information
-        ol_reinsert <- GenomicRanges::findOverlaps(bs_paired_red, bs_tab)
-        replacements <- do.call(rbind, sapply(1:length(bs_paired_red), function(x){
-          vals <- values(bs_tab)[subjectHits(ol_reinsert)[queryHits(ol_reinsert)==x],]
-          vals <- vals[order(vals$start),]
-          vals_new <- vals[1,]
-          vals_new$start <- min(vals$start)
-          vals_new$end <- max(vals$end)
-          vals_new$QA <- round(mean(as.numeric(vals$QA)))
-          vals_new$QS <- max(vals$QS)
-          vals_new$QSS <- vals$QSS[1]
-          vals_new$QSE <- tail(vals$QSE, 1)
-          vals_new$num_exon <- sum(vals$num_exon)
-          vals_new$defragged <- TRUE
-          return(vals_new)
-        }))
-      }
-    }    ### Now return to genomic-coordinate space, and annotate for whether defragged
-    if(length(ol_reinsert)>0){
-      tab_out <- tab[-unique(subjectHits(ol_reinsert)),]
-      tab_out <- rbind(tab_out, replacements)
-      tab_out <- tab_out[order(tab_out$sample, tab_out$chr, tab_out$start),]
-    }
-    return(tab_out)
-}
-
-toBinSpace <- function(gr, bins, pattern="-"){
-    tmp <- GRanges(str_replace(as.character(seqnames(gr)), paste0(".*", pattern), ""), IRanges(start(gr), end(gr)))
-    ol <- findOverlaps(tmp, bins)    
-    info <- matrix(unlist(by(subjectHits(ol), queryHits(ol), function(x) c(min(x), max(x)))), ncol=2, byrow=TRUE)
-    strds <- strand(gr)[unique(queryHits(ol))]
-    out <- GRanges(seqnames(gr)[unique(queryHits(ol))], IRanges(info[,1], info[,2]), strand=strds)
-    values(out) <- values(gr)[unique(queryHits(ol)),]
-    return(out)
-}
-createBins <- function(tab){
-  return(GRanges(tab[,1], IRanges(tab[,2], tab[,3])))
-}
-divideMultiple <- function(svtk){
-    svtk_multi <- svtk[str_detect(svtk$call_name, ","),]
-    splits <- str_split(svtk_multi$call_name, ",")
-    lens <- sapply(splits, length)
-    expanded <- data.frame(name=rep(svtk_multi[,1], times=lens), call_name=unlist(splits))
-    svtk <- svtk[-which(str_detect(svtk$call_name, ",")),]
-    svtk <- rbind(svtk, expanded)
-    return(svtk)
-}
+srt <- function(x){sort(table(x), decreasing = TRUE)}
 
 makeFiles <- function(name, cohort, mat, gbucket){
     output_name <- paste0(cohort, "-", name, ".txt")
@@ -137,6 +60,10 @@ makeFiles <- function(name, cohort, mat, gbucket){
     write.table(files, quote=FALSE, sep="\t", col.names=F, row.names=F, file=paste0("~/downloads/", output_name))
     system2("gsutil", paste0("cp ~/downloads/", output_name, " ", gbucket, output_name))
     #file.remove(paste0("~/downloads/", output_name))
+}
+
+wrapper <- function(x, ...) {
+  paste(strwrap(x, ...), collapse = "\n")
 }
 
 plot_ploidy <- function(df, i=1){
@@ -234,7 +161,7 @@ system2("java", sprintf("-Xmx16G -jar %s getCountsMatrix %s %scounts_matrix.tsv 
 - save the R PCA object
 a scree plot for the PCA loadings is generated to help visualize the data. 
 ```{r}
-wd <- "/path/to/folder/"
+wd <- ""
 counts_df <- read.table(paste0(wd, "counts_matrix.tsv"), sep="\t", stringsAsFactors = FALSE, header=TRUE, fill=TRUE)
 
 counts_df[is.na(counts_df)] <- 0
@@ -256,16 +183,27 @@ x <- pca$x
 save(x, file=paste0(wd, "x.rda"))
 ```
 
+
+```{r}
+open3d()
+rgl.bg(color = "grey") 
+plot3d(pca$x[,1:3], col=colors)
+if (!rgl.useNULL())
+  play3d(spin3d(axis = c(1, 1, 1), rpm = 4), duration = 30, )
+```
+
+
 #Step 5
 - Pseudo-automate clustering. 
 This step uses unsupervised clustering and metrics, so manual curration of final clustering is highly recomended. Typically, the best choice is among the top four recommended options. I am currently using only hclust. From previous experiences, it tends to work the best on average. Density based methods are currently in development. The rval data frame will store the results of each clustering metric. The final column is a ranking of all the metrics. By default, the first choice is chosen for clustering. However, you should manually check the data frame to see if any other combination has similar rankings in metrics to the top choice. The top choice is not necessarily the best. Change the 'n_clusters' variable based on the number of clusters you want. 
 ```{r}
-wd <- "/path/to/folder/"
+wd <- ""
 load(paste0(wd, "x.rda"))
+load(paste0(wd, "pca.rda"))
 
 set.seed(123)
 pca_loadings <- x
-n_clusters <- 25
+n_clusters <- 15
 hclust_methods <- c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid") 
 distance_methods <- c("euclidean", "maximum", "canberra", "minkowski")
 mink_p <- c(10)
@@ -275,51 +213,69 @@ results$db <- 0
 results$silhouette <- 0
 results$dunn <- 0
 
-dist_eucl <- dist(pca_loadings[,1:7], method="euclidean") 
-dist_maxi< - dist(pca_loadings[,1:7], method="maximum") 
-dist_canb <- dist(pca_loadings[,1:7], method="canberra") 
-dist_mink <- dist(pca_loadings[,1:7], method="minkowski", p=2)
+dist_eucl <- dist(pca_loadings[,1:3], method="euclidean") 
+dist_maxi <- dist(pca_loadings[,1:3], method="maximum") 
+dist_canb <- dist(pca_loadings[,1:3], method="canberra") 
+dist_mink <- dist(pca_loadings[,1:3], method="minkowski", p=2)
+
+cuts <- vector("list", n_clusters)
+
+USE_METRICS <- FALSE
+
 for(i in 1:nrow(results)){
   print(i)
-  #dist_mat <- dist(pca_loadings[,1:7], method=results$distance[i], p=ifelse(results$distance[i]=="minkowski", mink_p, 2)) 
-  dist_mat <- switch(results$distance[i], "euclidean"=dist_eucl, "maximum"=dist_maxi, "canberra"=dist_canb, "minkowski"=dist_mink)
+  dist_mat <- switch(results$distance[i] %>% as.character(), "euclidean"=dist_eucl, "maximum"=dist_maxi, "canberra"=dist_canb, "minkowski"=dist_mink)
   hclust <- hclust(dist_mat, method=results$agglomeration[i]) 
   cut_avg <- cutree(hclust, k=n_clusters)
+  temp_names_srt <- names(srt(cut_avg))
+  cuts[[i]] <- sapply(unname(cut_avg), function(x) which(x == temp_names_srt))
   
-  results$db[i] <- index.DB(pca_loadings[,1:3], cut_avg, centrotypes="centroids", p=3)$DB
-  results$silhouette[i] <- mean(silhouette(cut_avg, dist_mat)[,3])
-  results$dunn[i] <- dunn(dist_mat, cut_avg)
+  if(USE_METRICS){
+    results$db[i] <- index.DB(pca_loadings[,1:3], cut_avg, centrotypes="centroids", p=3)$DB
+    results$silhouette[i] <- mean(silhouette(cut_avg, dist_mat)[,3])
+    results$dunn[i] <- dunn(dist_mat, cut_avg)    
+  }
 }
 
-results <- results[order(results$silhouette, decreasing = TRUE),]
-rval <- results
-rval$db <- order(results$db, decreasing = FALSE)
-rval$dunn <- order(results$dunn, decreasing = TRUE)
-rval$silhouette <- order(results$silhouette, decreasing = TRUE)
-rval$sum <- rval$db + rval$dunn + rval$silhouette
-rval <- rval[order(rval$sum),]
-write.table(rval , paste0(wd, "clustering_metrics", n_clusters, ".tsv"), sep="\t", quote = FALSE, col.names = TRUE, row.names = FALSE)
+if(USE_METRICS){
+  results <- results[order(results$silhouette, decreasing = TRUE),]
+  rval <- results
+  rval$db <- order(results$db, decreasing = FALSE)
+  rval$dunn <- order(results$dunn, decreasing = TRUE)
+  rval$silhouette <- order(results$silhouette, decreasing = TRUE)
+  rval$sum <- rval$db + rval$dunn + rval$silhouette
+  rval <- rval[order(rval$sum),]
+  write.table(rval , paste0(wd, "clustering_metrics", n_clusters, ".tsv"), sep="\t", quote = FALSE, col.names = TRUE, row.names = FALSE)
+}
+
+ct <- as.data.frame(do.call(rbind, lapply(cuts, table)))
+ct <- ct[order(ct[,1]), ]
 ```
+
+the top row of ct is often a good choice as well
 
 #Step 6
 Plot the clustering output. Change the 'choice' variable from 1 to 33 to cycle through the different clustering methods. (lower is "better")
 ```{r}
 n <- n_clusters
-choice <- 1
-dist_mat <- switch(results$distance[choice], "euclidean"=dist_eucl, "maximum"=dist_maxi, "canberra"=dist_canb, "minkowski"=dist_mink)
-hclust <- hclust(dist_mat, method=rval$agglomeration[choice]) 
-cut_avg <- cutree(hclust, k=n)
-sorted_clusters <- sapply(unname(cut_avg), function(x) which(x == names(srt(cut_avg))))
+choice <- 10
+sorted_clusters <- cuts[[choice]]
 cols <- rainbow(n)[sample(1:n, n)]
 plot3d(x[,1:3], col=cols[sorted_clusters])
 ```
 
+
 merge the small clusters to their nearest neighbor
 ```{r}
 set.seed(123)
-threshold <- 200
+threshold <- 150
 cluster_centers <- do.call(rbind, lapply(1:n_clusters, function(i){
-  colMeans(x[sorted_clusters==i, ])
+  message(i)
+  if(length(x[sorted_clusters==i, ]) == 7){
+    return(x[sorted_clusters==i, ])    
+  } else {
+    colMeans(x[sorted_clusters==i, ])  
+  }
 }) ) %>% as.data.frame()
 
 tab <- table(sorted_clusters)
@@ -346,7 +302,7 @@ plot3d(x[,1:3], col=cols[nearest_clusters])
 cohort_size <- 200
 memb <- do.call(rbind, lapply(sort(unique(nearest_clusters)), function(i){
   if(length(which(sorted_clusters==i)) <= cohort_size){
-    df <- data.frame(membership=paste0("cluster_", i, "_COHORT"), 
+    df <- data.frame(membership=paste0("cluster_22k_", i, "_COHORT"), 
                      samples = row.names(pca$x)[which(nearest_clusters==i)])
     return(df)
   } else {
@@ -354,8 +310,8 @@ memb <- do.call(rbind, lapply(sort(unique(nearest_clusters)), function(i){
     nearest_points_in_cluster_indexes <- which(nearest_clusters==i)
     case_subset_indexes <- base::setdiff(nearest_points_in_cluster_indexes, cohort_subset_indexes)
     
-    cohort_label <- paste0("cluster_", i, "_COHORT")
-    case_label <- paste0("cluster_", i, "_CASE")
+    cohort_label <- paste0("cluster_22k_", i, "_COHORT")
+    case_label <- paste0("cluster_22k_", i, "_CASE")
     
     cohort_samples <- row.names(pca$x)[cohort_subset_indexes]
     case_samples <- row.names(pca$x)[case_subset_indexes]
@@ -373,32 +329,257 @@ memb <- do.call(rbind, lapply(sort(unique(nearest_clusters)), function(i){
 write.table(memb, paste0(wd, "membership.tsv"), sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
 ```
 
-You might need to re-match the ID's, you may need to change the regex arg of grepl()
 ```{r}
-entity <- read.table(paste0(wd, "sample.tsv"), sep="\t", header = TRUE, stringsAsFactors = FALSE)
-entity <- entity[grepl("cram", entity$cram_or_bam_path), ]
-actual_names <- lapply(memb$samples, function(i) entity$entity.sample_id[grepl(i, entity$entity.sample_id)] )
-table(sapply(actual_names, length) ) # IF THESE ARE NOT ALL '1' YOU HAVE A PROBLEM
-df2 <- data.frame(cluster=memb$membership, sample=unlist(actual_names))
-write.table(df2, paste0(wd, "CASE_COHORT_groups.tsv"), sep="\t", col.names =FALSE, quote=FALSE, row.names = FALSE)
-
-
-df3 <- read.table(paste0(wd, "samples.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE)
-to_remove_samples <- df3$entity.sample_id[is.na(df3$exons_counts) & grepl("cram", df3$cram_or_bam_path)]
-df4 <- df2[!df2$sample %in% to_remove_samples, ]
-write.table(df4, paste0(wd, "CASE_COHORT_groups_trimmed.tsv"), sep="\t", col.names =FALSE, quote=FALSE, row.names = FALSE)
-```
-
-#Step 7
-Save a 3d animation of the plot
-3d rotate
-```{r}
+cols <- wes_palette("Darjeeling1")
+cols <- rainbow(n)[sample(1:n, n)]
 open3d()
-plot3d(x[,1:3], col=cols[sorted_clusters])
+rgl.bg(color = "white") 
+plot3d(x[,1:3], col=cols[nearest_clusters])
 if (!rgl.useNULL())
-  play3d(spin3d(axis = c(1, 1, 1), rpm = 4), duration = 15, )
-  movie3d( spin3d(rpm=3), duration=20,dir="C:/test/movie", clean=FALSE )
+  play3d(spin3d(axis = c(1, 1, 1), rpm = 4), duration = 30, )
 ```
+
+# cluster on sex chromosome
+```{r}
+files <- list.files(wd, pattern=".exons.counts.tsv", full.names = TRUE, recursive = TRUE)
+
+cluster <- makeCluster(detectCores()-1)
+clusterExport(cl=cluster, varlist=c("files", "str_replace_all"))
+counts_dfs <- parLapply(cluster, files, function(x){
+   cbind(read.table(x, sep="\t", header=TRUE, stringsAsFactors = FALSE, col.names = c("chr", "start", "end", "count"), comment.char = "@"),
+        str_replace_all(basename(x), ".exons.counts.tsv", ""))
+})
+stopCluster(cluster)
+
+
+names(counts_dfs) <- str_replace_all(basename(files), ".exons.counts.tsv", "")
+
+total_counts <- lapply(counts_dfs, function(x){
+  x <- x[!(x$start<=2781479 & x$end>=10001),] # remove PAR1
+  x <- x[!((x$chr=="chrX" & x$start<=156030895 & x$end>=155701383) | 
+           (x$chr=="chrY" & x$start<=57217415 & x$end>=56887903)),] # remove PAR2
+  data.frame(xcount = sum(x$count[x$chr=="chrX"]), 
+             ycount = sum(x$count[x$chr=="chrY"]), 
+             sample = as.character(x[1,5]), stringsAsFactors = FALSE)
+})
+
+merged_counts <- do.call(rbind, total_counts)
+merged_counts$x <- merged_counts$xcount / median(merged_counts$xcount)
+merged_counts$y <- merged_counts$ycount / median(merged_counts$ycount)
+
+memb <- read.table(paste0(wd, "membership.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE)
+memb <- memb[str_detect(memb$membership.sample_set_id, "cluster.*[COHORT_CASE]"), ]
+
+merged_counts$membership <- sapply(merged_counts$sample, function(x){
+  unique(memb$membership.sample_set_id[grepl(x, memb$sample)])[1]
+})
+merged_counts$super_cluster <- merged_counts$membership %>% str_replace_all("_(COHORT|CASE)", "")
+
+ggplot(merged_counts, aes(x=x, y=y, color=super_cluster)) + 
+  geom_point() + 
+  xlab("normalized chrX counts") + 
+  ylab("normalized chrY counts") + 
+  ggtitle("normalized chrX and chrY counts")
+```
+
+The X/Y counts form an elipsis shape (generally) with usually a handful of outliers. GMM has the best performance so far in for this unsupervised clustering process. Plots the cluster labels after for manual checking. 
+```{r}
+set.seed(4)
+
+n_super_clusters <- merged_counts$super_cluster %>% unique %>% length
+super_clusters <- merged_counts$super_cluster %>% unique
+merged_counts$sex_cluster <- "-1"
+merged_counts$sex_cluster_sub <- "-1"
+
+for(i in 1:n_super_clusters){
+  n_sub_cluster <- 2
+  current_super_cluster <- merged_counts[merged_counts$super_cluster == super_clusters[i],]
+
+  gclust <- GMM(current_super_cluster[, c("x", "y")], n_sub_cluster, km_iter = 10, em_iter=50)
+  pr <- predict_GMM(current_super_cluster[, c("x", "y")], gclust$centroids, gclust$covariance_matrices, gclust$weights)
+ # plot(current_super_cluster[, c("x", "y")], col=c("RED","BLUE")[pr$cluster_labels+1], pch=20, main=super_clusters[i])
+  labels <- c("A", "B")[1 + pr$cluster_labels]
+  sex_labels <- labels
+  
+  # this is quite bad rn, B, C denote quality
+  x_mean_A <- mean(current_super_cluster$x[labels=="A"])
+  x_mean_B <- mean(current_super_cluster$x[labels=="B"])
+  y_mean_A <- mean(current_super_cluster$y[labels=="A"])
+  y_mean_B <- mean(current_super_cluster$y[labels=="B"])
+  if(x_mean_A < x_mean_B & y_mean_A > y_mean_B){
+    sex_labels[sex_labels=="A"] <- "Y"
+    sex_labels[sex_labels=="B"] <- "X"
+  } else if(x_mean_A > x_mean_B & y_mean_A < y_mean_B) {
+    sex_labels[sex_labels=="A"] <- "X"
+    sex_labels[sex_labels=="B"] <- "Y"
+  } else if(y_mean_A > y_mean_B){
+    sex_labels[sex_labels=="A"] <- "YB"
+    sex_labels[sex_labels=="B"] <- "XB"
+  } else if(y_mean_A < y_mean_B) {
+    sex_labels[sex_labels=="A"] <- "XB"
+    sex_labels[sex_labels=="B"] <- "YB"
+  } else if(x_mean_A < x_mean_B){
+    sex_labels[sex_labels=="A"] <- "YC"
+    sex_labels[sex_labels=="B"] <- "XC"
+  } else if(x_mean_A > x_mean_B) {
+    sex_labels[sex_labels=="A"] <- "XC"
+    sex_labels[sex_labels=="B"] <- "YC"
+  } 
+  sub_labels <- sex_labels
+  labels <- sub_labels
+  current_super_cluster$sub_labels <- sex_labels
+  print(
+  #g1 <-  
+    ggplot(current_super_cluster, aes(x=x, y=y, color=sub_labels)) + 
+    geom_point() + 
+    xlab("normalized chrX counts") + 
+    ylab("normalized chrY counts") + 
+    ggtitle(super_clusters[i]) 
+  )
+  
+  # ggsave(filename=paste0("C:/Users/iwong/Documents/MGH/IBD/more_samples/figrues/", super_clusters[i], "_chr_X_&_Y_counts_GMM.png"), 
+  #        plot=g1, 
+  #        device=png()
+  # )
+  
+  merged_counts$sex_cluster[merged_counts$super_cluster == super_clusters[i]] <- paste0(super_clusters[i], "_", labels) 
+  
+  for(k in unique(labels)){
+    if(length(which(labels==k)) <= 200){
+      sub_labels[which(labels==k)] <- paste0(sub_labels[which(labels==k)], "_COHORT")
+    } else {
+      cohort_subset_indexes <- base::sample(which(labels==k), 200, replace = FALSE)
+      case_subset_indexes <- base::setdiff(which(labels==k), cohort_subset_indexes)
+      
+      sub_labels[cohort_subset_indexes] <- paste0(sub_labels[cohort_subset_indexes], "_COHORT")
+      sub_labels[case_subset_indexes] <- paste0(sub_labels[case_subset_indexes], "_CASE")
+      
+    }
+  }
+  
+  merged_counts$sex_cluster_sub[merged_counts$super_cluster == super_clusters[i]] <- paste0(super_clusters[i], "_", sub_labels) 
+}
+table(merged_counts$sex_cluster_sub)
+memb <- data.frame(membership.sample_set_id=merged_counts$sex_cluster_sub, sample=merged_counts$sample)
+write.table(memb, "membership.tsv", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+```
+
+DBSCAN is the best for when GMM doesn't work. fill in the vector super_clusters_to_re_cluster with the clusters that didn't work. DBSCAN isn't used as the first algorithm because it doesn't handle outliers as well
+```{r}
+set.seed(123)
+super_clusters_to_re_cluster <- c("")
+
+for(i in super_clusters_to_re_cluster){
+  current_super_cluster <- merged_counts[merged_counts$super_cluster == i,]
+  
+  dclust <- dbscan(current_super_cluster[, c("x", "y")], eps=0.1, minPts = 10); table(dclust$cluster); lab <- dclust$cluster + 1
+  n_clusters <- length(unique(lab))
+  x <- current_super_cluster[, c("x", "y")]
+  sorted_clusters <- sapply(unname(lab), function(x) which(x == names(srt(lab))))
+  cluster_centers <- do.call(rbind, lapply(1:n_clusters, function(i){
+    if(nrow(x[sorted_clusters==i, ]) == 1){
+      return(x[sorted_clusters==i, ])    
+    } else {
+      colMeans(x[sorted_clusters==i, ])  
+    }
+  }) ) %>% as.data.frame()
+  
+  tab <- table(sorted_clusters)
+  which_clusters_to_relabel <- sorted_clusters[!sorted_clusters %in% c(1,2)] %>% unique()
+  bool_cluster_relabel <- sorted_clusters %in% which_clusters_to_relabel
+  main_cluster_centers <- cluster_centers[-c(which_clusters_to_relabel),]
+  
+  nearest_clusters <- lapply(1:nrow(x), function(i){
+    if(!bool_cluster_relabel[i]){ 
+      return(sorted_clusters[i])
+    } else {
+      dists <- as.matrix(dist(rbind(x[i, ], main_cluster_centers)))[1, -1]
+      return(as.numeric(names(dists)[which(dists==min(dists))][1]))
+    }
+  }) %>% unlist %>% as.numeric()
+  
+  labels <- c("A", "B")[nearest_clusters]
+  sex_labels <- labels
+  
+  # this is quite bad rn, B, C denote quality
+  x_mean_A <- mean(current_super_cluster$x[labels=="A"])
+  x_mean_B <- mean(current_super_cluster$x[labels=="B"])
+  y_mean_A <- mean(current_super_cluster$y[labels=="A"])
+  y_mean_B <- mean(current_super_cluster$y[labels=="B"])
+  if(x_mean_A < x_mean_B & y_mean_A > y_mean_B){
+    sex_labels[sex_labels=="A"] <- "Y"
+    sex_labels[sex_labels=="B"] <- "X"
+  } else if(x_mean_A > x_mean_B & y_mean_A < y_mean_B) {
+    sex_labels[sex_labels=="A"] <- "X"
+    sex_labels[sex_labels=="B"] <- "Y"
+  } else if(y_mean_A > y_mean_B){
+    sex_labels[sex_labels=="A"] <- "YB"
+    sex_labels[sex_labels=="B"] <- "XB"
+  } else if(y_mean_A < y_mean_B) {
+    sex_labels[sex_labels=="A"] <- "XB"
+    sex_labels[sex_labels=="B"] <- "YB"
+  } else if(x_mean_A < x_mean_B){
+    sex_labels[sex_labels=="A"] <- "YC"
+    sex_labels[sex_labels=="B"] <- "XC"
+  } else if(x_mean_A > x_mean_B) {
+    sex_labels[sex_labels=="A"] <- "XC"
+    sex_labels[sex_labels=="B"] <- "YC"
+  } 
+  sub_labels <- sex_labels
+  labels <- sub_labels
+  current_super_cluster$sub_labels <- sex_labels
+  print(ggplot(current_super_cluster, aes(x=x, y=y, color=sub_labels)) + 
+  geom_point() + 
+  xlab("normalized chrX counts") + 
+  ylab("normalized chrY counts") + 
+  ggtitle(i) )
+  
+  merged_counts$sex_cluster[merged_counts$super_cluster == i] <- paste0(i, "_", labels) 
+  
+  for(k in unique(labels)){
+    if(length(which(labels==k)) <= 200){
+      sub_labels[which(labels==k)] <- paste0(sub_labels[which(labels==k)], "_COHORT")
+    } else {
+      cohort_subset_indexes <- base::sample(which(labels==k), 200, replace = FALSE)
+      case_subset_indexes <- base::setdiff(which(labels==k), cohort_subset_indexes)
+      
+      sub_labels[cohort_subset_indexes] <- paste0(sub_labels[cohort_subset_indexes], "_COHORT")
+      sub_labels[case_subset_indexes] <- paste0(sub_labels[case_subset_indexes], "_CASE")
+      
+    }
+  }
+  merged_counts$sex_cluster_sub[merged_counts$super_cluster == i] <- paste0(i, "_", sub_labels) 
+}
+```
+
+
+plot all sex clusters and write membership to file. 
+```{r}
+for(i in 1:n_super_clusters){
+  current_super_cluster <- merged_counts[merged_counts$super_cluster == super_clusters[i],]
+  print(ggplot(current_super_cluster, aes(x=x, y=y, color=sex_cluster)) + 
+  geom_point() + 
+  xlab("normalized chrX counts") + 
+  ylab("normalized chrY counts") + 
+  ggtitle(super_clusters[i]) )
+}
+memb <- data.frame(membership.sample_set_id=merged_counts$sex_cluster_sub, sample=merged_counts$sample)
+table(memb$membership.sample_set_id)
+write.table(memb, paste0(wd, "membership_plus_sex_cluster.tsv"), sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+```
+
+
+
+update sample file and upload
+```{r}
+
+
+
+```
+
+
+
+
 
 #Step 11
 After running cohort mode, you will need to upload certain reference files so that case mode can use the model built by cohort mode
@@ -407,11 +588,11 @@ wd <- "/path/to/folder/"
 meta <- read.table(paste0(wd, "sample_set_entity.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE)
 cohorts <- meta[,1][grepl("COHORT", meta[,1])]  # change to your cohort
 pse_case <- NULL
-gbucket = 'gs://.....' # change to your gbucket
+gbucket = 'gs:///000_aux/' # change to your gbucket
 for(i in 1:length(cohorts)){
     cohort <- cohorts[i]
     ind <- which(meta[,1] == cohort)
-    case <- str_replace(cohort, "COHORT_", "CASE_")
+    case <- str_replace(cohort, "COHORT", "CASE")
     if(case %in% meta[,1]){
         message(case)
         makeFiles("calling_configs", case, meta[ind,], gbucket)
@@ -424,7 +605,7 @@ for(i in 1:length(cohorts)){
 }
 ## Update the PARTICIPANT SET file
 pse_case <- pse_case[, which(colnames(pse_case) %in% c("entity.sample_set_id", "intervals", "filtered_intervals", "contig_ploidy_model_tar"))]
-    pse_case[,1] <- str_replace(pse_case[,1], "COHORT_", "CASE_")    
+    pse_case[,1] <- str_replace(pse_case[,1], "COHORT", "CASE")    
     pse_case$file_gcnv_model_tars <- paste0(gbucket, pse_case[,1], "-gcnv_model_tars.txt")
     pse_case$file_calling_configs <- paste0(gbucket, pse_case[,1], "-calling_configs.txt")
     pse_case$file_denoising_configs <- paste0(gbucket, pse_case[,1], "-denoising_configs.txt")
@@ -432,7 +613,7 @@ pse_case <- pse_case[, which(colnames(pse_case) %in% c("entity.sample_set_id", "
     pse_case$file_sharded_interval_lists <- paste0(gbucket, pse_case[,1], "-sharded_interval_lists.txt")        
         pse_case <- rbind(as.character(colnames(pse_case)), apply(pse_case, 2, as.character))
         pse_case[1,1] <- "entity:sample_set_id"
-        write.table(pse_case, sep="\t", row.names=F, col.names=F, file=paste0("~/downloads/c_pse.txt"), quote=F)
+        write.table(pse_case, sep="\t", row.names=F, col.names=F, file=paste0(wd, "/c_pse.txt"), quote=F)
 ```
 
 
@@ -452,6 +633,7 @@ Convert VCFs to BED format
 system2("java", sprintf("-Xmx16G -jar %s convertVCFsToBEDFormat %s svtk_input.bed genotyped-segments- .vcf", jar_path, wd, wd ))
 ```
 
+
 #Step 15
 Cluster calls together. You will need to install svtk: https://github.com/talkowski-lab/svtk
 ```{r}
@@ -464,122 +646,28 @@ Merge the input and output of svtk, as svtk will delete exra metadata fields
 system2("java", sprintf("-Xmx16G -jar %s svtkMatch %ssvtk_input.bed %ssvtk_output.bed %sclustered.bed", jar_path, wd, wd, wd))
 ```
 
+
 #Step 17
-defragment calls. You will need your original intervals file
+defragment calls
 ```{r}
-wd <- "C:/Users/iwong/Documents/MGH/CMG_2020_03_04/2020_03_23_refresh/all_finished_runs/"
-gcnv <- read.table(paste0(wd, "clustered.bed"), sep="\t", stringsAsFactors=FALSE, header=FALSE)
-colnames(gcnv) <- c("chr", "start", "end", "name", "svtype", "sample", "call_name", "vaf", "vac", "pre_rmsstd", "post_rmsstd", "CN", "GT", "NP", "QA", "QS", "QSE", "QSS", "ploidy", "strand")
-gcnv$batch <- str_extract(gcnv$call_name, "cluster.*[(CASE)|(COHORT)]")
-gcnv$num_exon <- -1 # currently not supported
-out_list <- vector("list", length = length(unique(gcnv$batch)))
-fragment_threshold <- 20
-ext <- .3
-
-intervals <- read.table(paste0(wd, "aux_gencode_v33_split_800.bed"), comment.char="#")
-bins_tab <- rep(list(intervals), length(unique(gcnv$batch)))
-createBins <- function(tab){return(GRanges(tab[,1], IRanges(tab[,2], tab[,3])))}
-list_bins <- lapply(bins_tab, createBins)
-names(list_bins) <- unique(gcnv$batch)
-
-for(i in 1:length(unique(gcnv$batch))){
-  x <- unique(gcnv$batch)[i]
-  message(x)
-  gcnv_toDefrag <- gcnv[as.numeric(gcnv$QS)>=fragment_threshold & gcnv$batch==x,]
-  gcnv_defrag <- deFragment(gcnv_toDefrag, list_bins[[x]], ext)    
-  gcnv_notDefrag <- gcnv[as.numeric(gcnv$QS)<fragment_threshold & gcnv$batch==x,]
-  gcnv_notDefrag$defragged <- FALSE
-  gcnv_notDefrag$cprotect <- FALSE    
-  gr_df <- GRanges(paste(gcnv_defrag$sample, "::::", gcnv_defrag$chr), IRanges(gcnv_defrag$start, gcnv_defrag$end))
-  gr_ndf <- GRanges(paste(gcnv_notDefrag$sample, "::::", gcnv_notDefrag$chr), IRanges(gcnv_notDefrag$start, gcnv_notDefrag$end))
-  suppressWarnings(ol <- GenomicRanges::findOverlaps(gr_df, gr_ndf)    )
-  gcnv_defrag$mask_defrag <- FALSE
-  gcnv_notDefrag$mask_defrag <- FALSE
-  if(length(ol)>0){gcnv_notDefrag$mask_defrag[unique(subjectHits(ol))] <- TRUE}    
-  out <- rbind(gcnv_defrag, gcnv_notDefrag)
-  out <- out[order(out$sample, out$chr, out$start),]
-  out_list[[i]] <- out
-}
-gcnv_defragged <- do.call(rbind, out_list)
-gcnv_defragged <- gcnv_defragged[gcnv_defragged$mask_defrag==FALSE,]
-gcnv_defragged$id <- 1:dim(gcnv_defragged)[1]
-
-write.table(as(gcnv_defragged, "data.frame"), file = paste0(wd, "gcnv_defragged.tsv"), sep="\t", row.names = TRUE, col.names = TRUE, quote=FALSE)
+system2("java", sprintf("-Xmx16G -jar %s defragment %sclustered.bed %sdefragmented.bed", jar_path, wd, wd))
 ```
 
-
-You are now basically done. the next steps are generic filtering and metric steps. 
-
-#Step 18 - QC and figures
-label qs_median label. I'm doing this is in java because I'm not good enough with R to make a version that runs in a reasonable timeframe
-Add PASS/FAIL metrics. TRUE=PASS    FALSE=FAIL
+#Step 18
+add QC labels and filters
 ```{r}
-system2("java", sprintf("-Xmx16G -jar %s labelMedianQS %sgcnv_defragged.tsv name QS %sgcnv_qsMed_intermediate.tsv", jar_path, wd, wd))
-gcnv_final <- read.table(paste0(wd, "gcnv_qsMed_intermediate.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE, fill=TRUE)
-
-gcnv_final$PASS_QS <- (gcnv_final$svtype=="DUP" & gcnv_final$QS>=50) | (gcnv_final$svtype=="DEL" & gcnv_final$QS>=100) | (gcnv_final$CN==0 & gcnv_final$QS>=400)
-gcnv_final$PASS_freq <- gcnv_final$vaf <= 0.01
-
-lt100_raw_calls <- table(gcnv_final$sample)[which(table(gcnv_final$sample) <= 100)] %>% names
-lt10_highQS_rare_calls <- table(gcnv_final$sample[gcnv_final$PASS_QS & gcnv_final$PASS_FREQ])[which(table(gcnv_final$sample[gcnv_final$PASS_QS & gcnv_final$PASS_FREQ]) <= 10)] %>% names
-gcnv_final$PASS_sample <- (gcnv_final$sample %in% lt100_raw_calls) & ( (gcnv_final$sample %in% lt10_highQS_rare_calls))
-
-# ver B - this takes an obscenely long time, R doesn't really support hashing so access times take forever
-#t1 <- as.numeric(Sys.time())
-#variant_calls <- gcnv_final$name %>% unique
-#n_cores <- detectCores() - 1
-#cl <- makeCluster(n_cores)
-#clusterExport(cl=cl, varlist = c("gcnv_final", "variant_calls"))
-#list_by_variant_calls <- parLapply(cl, seq_along(variant_calls), function(x) {
-# df1 <- gcnv_final[gcnv_final$name==variant_calls[x], ]
-# df1$QS_MEDIAN <- median(df1$QS, na.rm=TRUE)
-# return(df1)
-#})
-#stopCluster(cl)
-#t2 <- as.numeric(Sys.time())
-#df_c <- do.call(rbind, list_by_variant_calls)
-
-df_c <- gcnv_final
-df_c$PASS_QS_var <- (df_c$svtype=="DUP" & df_c$QS_MEDIAN>=50) | (df_c$svtype=="DEL" & df_c$QS_MEDIAN>=100 & df_c$CN != 0) | (df_c$CN==0 & df_c$QS_MEDIAN>=400)
-
-df_d <- df_c
-df_d$site_frequency <- df_d$vaf
-df_d$call_name <- NULL
-df_d$vac <- NULL
-df_d$vaf <- NULL
-df_d$pre_rmsstd <- NULL
-df_d$post_rmsstd <- NULL
-df_d$num_exon <- NULL
-df_d$cprotect <- NULL
-df_d$mask_defrag <- NULL
-df_d$id <- NULL
-
-write.table(df_d, paste0(wd, "final_callset.tsv"), sep="\t", quote=FALSE, row.names = FALSE)
-system2("java", sprintf("-Xmx16G -jar %s jointCallVCF %sfinal_callset.tsv %sjoint_callset.tsv name sample", jar_path, wd, wd))
+system2("java", sprintf("-Xmx16G -jar %s filter %sdefragmented.bed %sunannotated.bed", jar_path, wd, wd))
 ```
 
+# annotate with genes
+
+# count exons
+
+# add gene list labels
+
+# generate metadata
 
 look at aneuploidies. First need to download the ploidy information
-Option A
-```{r}
-wd <- "C:/Users/iwong/Documents/MGH/CMG_2020_03_04/2020_03_23_refresh/downloads/"
-wdu <- wd %>% str_replace_all("C:/", "/mnt/c/")
-
-entity <- read.table(paste0(wd, "sample_set_entity.tsv"), sep="\t", quote="", stringsAsFactors=FALSE, header=TRUE)
-contig_ploidy_calls <-c(entity$contig_ploidy_calls_tar, entity$contig_ploidy_calls_tars)
-contig_ploidy_calls <- as.list(contig_ploidy_calls[contig_ploidy_calls!=""])
-temp1 <- unlist(lapply(contig_ploidy_calls, function(x) x %>% str_replace_all("[\"|\\[|\\]]", "") %>% str_split(",")))
-for(i in seq_along(temp1)){
-  message(paste0("bash -c ", sprintf("'gsutil cp %s %sploidyTar%s/contig-ploidy.tar.gz'", temp1[i], wdu, i)))
-  dir.create(sprintf("%sploidyTar%s/", wd, i))
-  system2("bash", sprintf("-c 'gsutil cp %s %sploidyTar%s/contig-ploidy.tar.gz'", temp1[i], wdu, i))
-}
-
-system2("java", sprintf("-Xmx16G -jar %s downloadSegmentsVCFs %ssample_set_entity.tsv %s contig_ploidy_calls_tars", jar_path, wd, wd ))
-system2("java", sprintf("-Xmx16G -jar %s downloadSegmentsVCFs %ssample_set_entity.tsv %s contig_ploidy_calls_tar", jar_path, wd, wd ))
-```
-
-Option B
 input is manifest file
 #!/bin/bash
 
@@ -608,8 +696,8 @@ done
 Get ploidy conunts
 ```{r}
 library(stringr)
-wd <- "C:/Users/iwong/Documents/"
-ploidy_files <- list.files(paste0(wd ,""), pattern="contig_ploidy.tsv", recursive = TRUE, full.names = TRUE)
+wd <- ""
+ploidy_files <- list.files(paste0(wd ,"ploidy/"), pattern="contig_ploidy.tsv", recursive = TRUE, full.names = TRUE)
 
 ploidy_dfs <- lapply(ploidy_files, function(x){
   df <- read.table(x, comment.char = "@", header=TRUE, stringsAsFactors=FALSE, quote="", fill=TRUE)
@@ -627,15 +715,16 @@ ploidy_samples <- c(sex_ploidy_samples, autosome_ploidy_samples)
 Download DCR files
 ```{r}
 # This will take a while, you might want to subset to files with aneuploidies
-system2("java", sprintf("-Xmx16G -jar %s getBarcodeCounts %ssample_set_entity.tsv %s denoised_copy_ratios", jar_path, wd, wd ))
+system2("java", sprintf("-Xmx16G -jar %s getBarcodeCounts %ssample_set_entity.tsv %s/ploidy/ denoised_copy_ratios", jar_path, wd, wd ))
 ```
 
 
 Plot ploidy counts,
+#TODO : rewrite temp1 to use lapply for with ploidy samples as input
 ```{r}
-wd <- "C:/Users/iwong/Documents/MGH/"
+wd <- ""
 dcr_files <- list.files(wd, pattern="denoised_copy_ratios-", recursive = TRUE, full.names = TRUE)
-temp1 <- str_detect(dcr_files, paste0("(",paste(ploidy_samples, collapse=")|(") , ")"))
+temp1 <- str_detect(dcr_files, paste0("(",paste(ploidy_samples, collapse=")|(") , ")")) 
 temp2 <- dcr_files[temp1]
 
 cluster <- makeCluster(detectCores()-1)
@@ -661,16 +750,55 @@ for(i in 1:nrow(autosome_ploidy_dfs)){
 }
 
 sex_ploidy_dfs <- ploidy_df[(ploidy_df$sample %in% sex_ploidy_samples) & str_detect(ploidy_df$CONTIG, "X|Y"), ]
+df_instances <- rep("-1", unique(sex_ploidy_dfs$sample) %>% length)
 for(i in seq_along(unique(sex_ploidy_dfs$sample))){
   par(mfrow=c(1,2))
   df <- dcr_df[dcr_df$sample==unique(sex_ploidy_dfs$sample)[i], ]
-  plot_x <- plot_ploidy(df[str_detect(df$CONTIG, "X"),])
-  plot_y <- plot_ploidy(df[str_detect(df$CONTIG, "Y"),])
-  grid.arrange(plot_x, plot_y, ncol=2)
+  # plot_x <- plot_ploidy(df[str_detect(df$CONTIG, "X"),])
+  # plot_y <- plot_ploidy(df[str_detect(df$CONTIG, "Y"),])
+  # grid.arrange(plot_x, plot_y, ncol=2)
   
+  temp_df_x <- df[str_detect(df$CONTIG, "X"),]
+  temp_df_y <- df[str_detect(df$CONTIG, "Y"),]
+  df_instances[i] <- c(
+                          rep(temp_df_x$CONTIG[1], ploidy_df[ploidy_df$CONTIG==temp_df_x$CONTIG[1] & ploidy_df$sample==temp_df_x$sample[1],]$PLOIDY[1]),
+                          rep(temp_df_y$CONTIG[1], ploidy_df[ploidy_df$CONTIG==temp_df_y$CONTIG[1] & ploidy_df$sample==temp_df_y$sample[1],]$PLOIDY[1])
+                          ) %>% paste0(collapse = "")
+# 
+#   my_plot <- arrangeGrob(plot_x, plot_y, ncol=2)
+#   ggsave(sprintf("%s/dcr_plots/ploidy_sample_%s_sex_chroms.pdf", wd, df$sample[1]), my_plot)
+}
+```
+
+
+```{r}
+case_1 <- df_d$sample[df_d$batch=="cluster_1_CASE"] %>% unique
+cohort_1 <- df_d$sample[df_d$batch=="cluster_1_COHORT"] %>% unique
+
+case_instances <- rep("-1", length(case_1))
+cohort_instances <- rep("-1", length(cohort_1))
+
+for(i in seq_along(case_1)){
+  case_instances[i] <- c(rep(ploidy_df$CONTIG[ploidy_df$sample==case_1[i]][23], ploidy_df$PLOIDY[ploidy_df$sample==case_1[i]][23]), 
+                         rep(ploidy_df$CONTIG[ploidy_df$sample==case_1[i]][24], ploidy_df$PLOIDY[ploidy_df$sample==case_1[i]][24])
+                         ) %>% paste0(collapse = "")
   
-  my_plot <- arrangeGrob(plot_x, plot_y, ncol=2)
-  ggsave(sprintf("%sploidy_sample_%s_sex_chroms.pdf", wd, df$sample[1]), my_plot)
+}
+
+for(i in seq_along(cohort_1)){
+  cohort_instances[i] <- c(rep(ploidy_df$CONTIG[ploidy_df$sample==cohort_1[i]][23], ploidy_df$PLOIDY[ploidy_df$sample==cohort_1[i]][23]), 
+                         rep(ploidy_df$CONTIG[ploidy_df$sample==cohort_1[i]][24], ploidy_df$PLOIDY[ploidy_df$sample==cohort_1[i]][24])
+                         ) %>% paste0(collapse = "")
+  
+}
+
+all_instances <- rep("-1", length(ploidy_df$sample %>% unique))
+all_samples <- ploidy_df$sample %>% unique
+for(i in seq_along(all_samples)){
+  all_instances[i] <- c(rep(ploidy_df$CONTIG[ploidy_df$sample==all_samples[i]][23], ploidy_df$PLOIDY[ploidy_df$sample==all_samples[i]][23]), 
+                         rep(ploidy_df$CONTIG[ploidy_df$sample==all_samples[i]][24], ploidy_df$PLOIDY[ploidy_df$sample==all_samples[i]][24])
+                         ) %>% paste0(collapse = "")
+  
 }
 ```
 
@@ -679,9 +807,8 @@ for(i in seq_along(unique(sex_ploidy_dfs$sample))){
 Main Figures
 variant count boxplots
 ```{r}
-library(wesanderson)
-wd <- "C:/Users/iwong/Documents/"
-gcnv <- read(wd, "final_callset.tsv")
+wd <- ""
+gcnv <- read(wd, "final_callset_all_strictCountedExons.tsv")
 
 qs_window <- seq(0, 100, 10)
 total_variants <- rep(0, length(qs_window))
@@ -716,7 +843,7 @@ gcnvhq <- gcnv[gcnv$PASS_freq & gcnv$PASS_QS & gcnv$PASS_sample, ]
 ```{r}
 g1 <- ggplot(df, aes(x=qs_threshold, y=n_variants)) +
   geom_boxplot(outlier.size = NA, outlier.shape = NA, color=wes_palette("Zissou1")[1], fill=wes_palette("Zissou1")[2], alpha=0.6) + 
-  coord_cartesian(ylim = c(0, 80)) +
+  coord_cartesian(ylim = c(0, 40)) +
   xlab("QS threshold") + 
   ylab("# of Variants per sample") +
   ggtitle("Variants per sample, outliers not shown") +
@@ -781,8 +908,8 @@ get counts of CNVS per bin
 bedtools intersect -wa -a gencode_v33_split.bed -b gcnv_final.tsv |  awk '{print $1 "-" $2}' > intersections.bed
 ```{r}
 if(FALSE){
-  del_intersections <- read.table(paste0(wd, "del_intersection.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
-  dup_intersections <- read.table(paste0(wd, "dup_intersection.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
+  del_intersections <- read.table(paste0(wd, "intersections_all_DEL.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
+  dup_intersections <- read.table(paste0(wd, "intersections_all_DUP.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
   var_type <- "raw"
   
   count_samples_per_cnv <- table(gcnv$name)
@@ -793,11 +920,11 @@ if(FALSE){
   variant_df_del <- variant_df[variant_df$svtype=="DEL", ]
   variant_df_dup <- variant_df[variant_df$svtype=="DUP", ]
 } else {
-  del_intersections <- read.table(paste0(wd, "hq_del_intersections.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
-  dup_intersections <- read.table(paste0(wd, "hq_dup_intersections.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
+  del_intersections <- read.table(paste0(wd, "intersections_HQ_DEL.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
+  dup_intersections <- read.table(paste0(wd, "intersections_HQ_DUP.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
   var_type <- "HQ"
   
-  gcnvhq <- gcnv[gcnv$PASS_freq & gcnv$PASS_QS & gcnv$PASS_sample, ]
+  gcnvhq <- gcnv[gcnv$HIGH_QUALITY==TRUE, ]
   count_samples_per_cnv <- table(gcnvhq$name)
   df_count_samples_per_cnv <- data.frame(name=names(count_samples_per_cnv), sample_Count= as.numeric(count_samples_per_cnv))
   variant_df <- gcnvhq[match(unique(gcnvhq$name), gcnvhq$name), c(1,2,4,5, 18, 19, 20)] %>% merge(df_count_samples_per_cnv)
@@ -961,17 +1088,16 @@ lapply(unique(del_df$chr), function(x){
 ```{r}
 jar_path <- "C:/Users/iwong/Documents/MGH/scripts/gCNV_helper.jar"
 system2("java", sprintf("-Xmx16G -jar %s --help", jar_path))
-system2("java", sprintf("-Xmx16G -jar %s getPerSampleMetrics  %sfinal_callset.tsv name %sby_variant.tsv", jar_path, wd, wd ))
-system2("java", sprintf("-Xmx16G -jar %s getPerSampleMetrics  %sgcnv_HQ.tsv name %sby_HQ_variant.tsv", jar_path, wd, wd ))
-system2("java", sprintf("-Xmx16G -jar %s getPerSampleMetrics  %sgcnv_HQ.tsv sample %sby_HQ_sample.tsv", jar_path, wd, wd ))
+system2("java", sprintf("-Xmx16G -jar %s getPerSampleMetrics  %sfinal_callset_all_strictCountedExons.tsv name %sby_variant.tsv", jar_path, wd, wd ))
+system2("java", sprintf("-Xmx16G -jar %s getPerSampleMetrics  %sfinal_callset_HQ_strictCountedExons.tsv name %sby_HQ_variant.tsv", jar_path, wd, wd ))
+system2("java", sprintf("-Xmx16G -jar %s getPerSampleMetrics  %sfinal_callset_HQ_strictCountedExons.tsv sample %sby_HQ_sample.tsv", jar_path, wd, wd ))
 ```
-
 ```{r}
 variant_df <- read.table(paste0(wd, "by_HQ_sample.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE, fill=TRUE)
 variant_df$X <- NULL
 
-df1 <- gcnv[match(unique(gcnv$name), gcnv$name),c(1,2,4,5)] %>% merge(variant_df)
-df1 <- gcnv[match(unique(gcnv$sample), gcnv$sample),c(1,2,4,5)] %>% merge(variant_df)
+#df1 <- gcnv[match(unique(gcnv$name), gcnv$name),c(1,2,4,5,6)] %>% merge(variant_df)
+df1 <- gcnv[match(unique(gcnv$sample), gcnv$sample),c(1,2,4,5,6)] %>% merge(variant_df)
 
 df1$bp <- df1$start
 dup_df <- df1[df1$svtype=="DUP", ]
@@ -980,6 +1106,8 @@ del_df <- df1[df1$svtype=="DEL", ]
 
 
 ```{r}
+out_dir <- paste0("QS_MEDIAN_HQ_sample/")
+dir.create(paste0(wd, out_dir))
 column_to_plot <- "QS_MEDIAN"
 lapply(unique(del_df$chr), function(x){
   temp_df_del <- del_df[del_df$chr==x,]
@@ -1003,13 +1131,15 @@ lapply(unique(del_df$chr), function(x){
     ggtitle(paste0(x, " DUP")) +
     scale_y_continuous(trans = 'log2')  
   
-  png(paste0(wd, column_to_plot, "_local-scale_", x, "_HQ-variants.png"), width=14, height=7, units="in", res=300)
+  png(paste0(wd, out_dir, column_to_plot, "_local-scale_", x, "_HQ_sample.png"), width=14, height=7, units="in", res=300)
   grid.arrange(g_del, g_dup, ncol=2)
   dev.off()
 })
 ```
 
 ```{r}
+out_dir <- paste0("QS_MEAN_HQ_sample/")
+dir.create(paste0(wd, out_dir))
 column_to_plot <- "QS_MEAN"
 lapply(unique(del_df$chr), function(x){
   temp_df_del <- del_df[del_df$chr==x,]
@@ -1033,26 +1163,25 @@ lapply(unique(del_df$chr), function(x){
     ggtitle(paste0(x, " DUP")) +
     scale_y_continuous(trans = 'log2')  
   
-  png(paste0(wd, column_to_plot, "_local-scale_", x, "_HQ-variants.png"), width=14, height=7, units="in", res=300)
+  png(paste0(wd, out_dir,column_to_plot, "_local-scale_", x, "_HQ_sample.png"), width=14, height=7, units="in", res=300)
   grid.arrange(g_del, g_dup, ncol=2)
   dev.off()
 })
 ```
 
 
-number of variants vs number of exons
-bedtools intersect -c -a gcnv.tsv -b gencode.bed > gcnv_with_count.tsv
-```{r}
-#dup_count <- read.table(paste0(wd, "gcnv_with_count_dup.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
-#del_count <- read.table(paste0(wd, "gcnv_with_count_del.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
 
-dup_count <- read.table(paste0(wd, "gcnv_count_HQ_dup.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
-del_count <- read.table(paste0(wd, "gcnv_count_HQ_del.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
+number of variants vs number of exons
+bedtools intersect -c -a gcnv.tsv -b aux_gencode_v33_split_800.bed > gcnv_with_count.tsv
+```{r}
+dup_count <- read.table(paste0(wd, "gcnv_with_count_dup.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
+del_count <- read.table(paste0(wd, "gcnv_with_count_del.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
+
+# dup_count <- read.table(paste0(wd, "gcnv_count_HQ_dup.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
+# del_count <- read.table(paste0(wd, "gcnv_count_HQ_del.tsv"), sep="\t", header=FALSE, stringsAsFactors = FALSE)
+
 colnames(dup_count) <- c(colnames(gcnv), "n_exons")
 colnames(del_count) <- c(colnames(gcnv), "n_exons")
-
-#gcnv2 <- gcnv2[gcnv2$PASS_freq==TRUE & gcnv2$PASS_QS==TRUE & gcnv2$PASS_sample==TRUE, ]
-#gcnv3 <- gcnv3[gcnv3$PASS_freq==TRUE & gcnv3$PASS_QS==TRUE & gcnv3$PASS_sample==TRUE, ]
 
 unique_dup <- dup_count[match(unique(dup_count$name), dup_count$name), ]
 unique_del <- del_count[match(unique(del_count$name), del_count$name), ]
@@ -1088,7 +1217,7 @@ g6 <- ggplot(data=df[df$nexons<5000, ], aes(x=log2_nexons, y=nvariants, group=ty
   scale_x_continuous(breaks=0:12, labels=2^(0:12)) +
   xlab("number of exons") + 
   ylab("number of variants") + 
-  ggtitle("Distribution of raw CNVs")
+  ggtitle("Distribution of HQ CNVs")
 g6
 ```
 
@@ -1139,7 +1268,7 @@ g7 <- ggplot(data=df3[df3$nexons<5000  , ], aes(x=log2_nexons, y=proportion, gro
   scale_x_continuous(breaks=0:12, labels=2^(0:12)) +
   xlab("number of exons") + 
   ylab("percent of singletons") + 
-  ggtitle("Distribution of HQ CNVs") + 
+  ggtitle("Distribution of raw CNVs") + 
   ylim(0, 100) 
 g7
 ```
@@ -1149,11 +1278,11 @@ g7
 
 overlapping histogram of size
 ```{r}
-df <- gcnv[, c("start", "end", "svtype", "PASS_freq", "PASS_sample", "PASS_QS")]
+df <- gcnv[, c("start", "end", "svtype", "PASS_FREQ", "PASS_sample", "PASS_QS")]
 df$size <- (df$end - df$start)/1000
 df$size_log10 <- df$size %>% log10
 df$size_log2 <- df$size %>% log2
-df$HQ <- df$PASS_freq & df$PASS_QS & df$PASS_sample
+df$HQ <- df$PASS_FREQ & df$PASS_QS & df$PASS_sample
 ```
 
 
@@ -1180,8 +1309,8 @@ g9
 venn diagram
 
 ```{r}
-wd <- "C:/Users/iwong/Documents/"
-gcnv <- read(wd, "final_callset.tsv")
+# wd <- ""
+# gcnv <- read(wd, "final_callset.tsv")
 
 samp <- c(TRUE, FALSE)
 freq <- c(TRUE, FALSE)
@@ -1192,8 +1321,8 @@ temp_df$count <- -1
 temp_df$percent_of_all_calls <- -1
 temp_df$per_sample <- -1
 for(i in 1:nrow(temp_df)){
-  temp_df$count[i] <- nrow(gcnv[gcnv$PASS_sample==temp_df$samp[i] & gcnv$PASS_freq==temp_df$freq[i] & gcnv$PASS_QS==temp_df$qs[i],])
-  temp_df$perc[i] <- temp_df$count[i] / nrow(gcnv) * 100
+  temp_df$count[i] <- nrow(gcnv[gcnv$PASS_sample==temp_df$samp[i] & gcnv$PASS_FREQ==temp_df$freq[i] & gcnv$PASS_QS==temp_df$qs[i],])
+  temp_df$percent_of_all_calls[i] <- temp_df$count[i] / nrow(gcnv) * 100
   temp_df$per_sample[i] <- temp_df$count[i] / (gcnv$sample %>% unique %>% length)
 }
 
@@ -1209,7 +1338,7 @@ length(unique(gcnv$name))
 temp_df
 
 pass_qs <- paste0(gcnv$sample[gcnv$PASS_QS], gcnv$name[gcnv$PASS_QS])
-pass_freq <- paste0(gcnv$sample[gcnv$PASS_freq], gcnv$name[gcnv$PASS_freq])
+pass_freq <- paste0(gcnv$sample[gcnv$PASS_FREQ], gcnv$name[gcnv$PASS_FREQ])
 pass_samp <- paste0(gcnv$sample[gcnv$PASS_sample], gcnv$name[gcnv$PASS_sample])
 
 library(RColorBrewer)
@@ -1218,8 +1347,8 @@ myCol <- wes_palette("Darjeeling1")[1:3]
 library(VennDiagram)
 venn.diagram(
   x = list(pass_qs, pass_freq, pass_samp),
-  category.names = c("pass_qs" , "pass_freq" , "pass_sample"),
-  filename = paste0(wd, 'venn_diagramm_a.png'),
+  category.names = c("pass_qs (32,673)" , "pass_freq (213,474)" , "pass_sample (62,678)"),
+  filename = paste0(wd, 'venn_diagramm.png'),
   output=TRUE,
   print.mode = c("raw", "percent"),
   
@@ -1249,6 +1378,6 @@ venn.diagram(
   cat.fontfamily = "sans",
   rotation = 1
 )
-```
 
+```
 
