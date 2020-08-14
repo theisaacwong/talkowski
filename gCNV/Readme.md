@@ -1,6 +1,6 @@
 This is a repository of small scripts intended to automate the batching, clustering, and basic QC of gCNV. Requires java 14. 
 Please use the R markdown (.Rmd) file for the full pipeline. 
-
+<pre>
         Version: 2.19
 
         java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}
@@ -155,3 +155,4 @@ Please use the R markdown (.Rmd) file for the full pipeline.
 	check that genes from list to be subsetted were originally labeled for in the source gtf file
 	[gencode_gtf] - gencode gtf file
 	[gene_list_1] ... [gene_list_n] - space separated list of gene lists
+</pre>
