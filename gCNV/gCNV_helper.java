@@ -58,7 +58,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.18";
+	public static final String VERSION = "2.19";
 
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
