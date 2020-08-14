@@ -14,6 +14,7 @@ import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -22,8 +23,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Scanner;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -67,19 +70,40 @@ public class gCNV_helper {
 		gCNV_helper g = new gCNV_helper(args);
 		System.out.println(g.toString());
 		System.out.println("version " + VERSION);
-		try {
-			g.checkVersion();
-		} catch (Exception e) {
-		}
+//		try {
+//			g.checkVersion();
+//		} catch (Exception e) {
+//		}
 		System.out.println("Java version: " + System.getProperty("java.version"));
 		System.out.println("Heap Size: " + getHeapSize());
 		start();
-		g.runBetter(args);
+		g.run(args);
 		stop();
+		
 	}
 	
+	
+	public static void writeGenesForTesting(String gtf, String output) throws FileNotFoundException {
+		var genes = parseGTFFile(gtf);
+		Collections.sort(genes);
+		for(int i = 0; i < genes.size(); i++) {
+			Gene gene = genes.get(i);
+			
+			for(int k = 0; k < gene.nexons; k++) {
+				System.out.println(
+						gene.chr + "\t" + 
+						gene.starts.get(k) + "\t" + 
+						gene.ends.get(k) + "\t" + 
+						gene.name + "\t" + 
+						gene.name + "_exon_" + k);
+				
+			}
+		}
+	}
+	
+	
 	/**
-	 * apply quality filters
+	 * apply quality filters, does not count X/Y chroms
 	 * @param input
 	 * @param output
 	 * @throws IOException 
@@ -98,8 +122,12 @@ public class gCNV_helper {
 			if(sampleToNRawCalls.containsKey(currSample) == false) {
 				sampleToNRawCalls.put(currSample, 0);
 			}
-			sampleToNRawCalls.put(currSample,
-								1 + sampleToNRawCalls.get(currSample));
+			//TODO: finish removing chrX
+			if(!(gcnv.get("chr", i).equals("chrX") || gcnv.get("chr", i).equals("chrY")) ) {
+				sampleToNRawCalls.put(currSample,
+						1 + sampleToNRawCalls.get(currSample));	
+			}
+			
 		}
 		
 		for(int i = 0; i < gcnv.nrow(); i++) {
@@ -116,7 +144,7 @@ public class gCNV_helper {
 			if(sampleToNPseudoHQCalls.containsKey(currSample) == false) {
 				sampleToNPseudoHQCalls.put(currSample, 0);
 			}
-			if(passQS[i] && passFREQ[i]) {
+			if(passQS[i] && passFREQ[i] && !(gcnv.get("chr", i).equals("chrX") || gcnv.get("chr", i).equals("chrY"))) {
 				sampleToNPseudoHQCalls.put( currSample,
 						1 + sampleToNPseudoHQCalls.get(currSample));	
 			}
@@ -199,13 +227,15 @@ public class gCNV_helper {
 		int totalNFiles = toRead.size();
 		for (int i = 0; i < N_THREADS; i++) {
 			exServer.execute(new Runnable() {
+				@SuppressWarnings("unchecked")
 				@Override
 				public void run() {
 					while (toRead.size() > 0) {
 						int currentFile = toRead.remove(0);
 						try {
 							DataFrame countsDF = new DataFrame(barcodeCountsFiles.get(currentFile), true, "\\t", "@");
-							doneReading2.put(currentFile, countsDF.getColumn(countsDF.fieldNames[3])); // TODO: change to shallow copy?
+							//doneReading2.put(currentFile, countsDF.getColumn(countsDF.fieldNames[3]));
+							doneReading2.put(currentFile, (ArrayList<String>) countsDF.getColumn(countsDF.fieldNames[3]).clone()); // Shallow copy should work right
 							progressPercentage(totalNFiles - toRead.size(), totalNFiles,
 									barcodeCountsFiles.get(currentFile));
 							countsDF = null; // java gc is a fickle mistress
@@ -322,7 +352,6 @@ public class gCNV_helper {
 	}
 
 	public void addGnomadAnnotations(String GCNV_INPUT, String OUTPUT, String gencodeGTF, String geneColumnName) throws IOException {
-		print("reading annotation file");
 		ArrayList<Gene> geneList = parseGTFFile(gencodeGTF);
 		HashMap<String, Gene> genes = new HashMap<>();
 		for(int i = 0; i < geneList.size(); i++) {
@@ -1819,213 +1848,530 @@ public class gCNV_helper {
 		svtkOutput.addColumns(columnNames, columnValues);
 		svtkOutput.writeFile(match_output, true);
 	}
+	
+	
+	
+	public static int BinarySearchUpperBound(ArrayList<Integer> list, int value, int start, int end) {
+		int low = Math.max(0, start);
+		int high = end==-1 ? list.size()-1 : Math.min(list.size()-1, end);
+		
+		int ol = low;
+		int oh = high;
+		
+		while (low <= high) {
+			int mid = (low + high) >>> 1;
+			int midVal = list.get(mid);
+			int cmp = Integer.compare(midVal, value);
+			if (cmp < 0)
+				low = mid + 1;
+			else if (cmp > 0)
+				high = mid - 1;
+			else {
+				while(mid<oh && list.get(mid) <= value) {
+					mid++;
+				}
+				return mid;
+			}
+		}
+		int mid = Math.min(Math.max(ol, low), oh);
+		while(mid<oh && list.get(mid) <= value) {
+			mid++;
+		}
+		return mid;
+	}
+	
+	public static int BinarySearchLowerBound(ArrayList<Integer> list, int value, int start, int end) {
+		int low = Math.max(0, start);
+		int high = end==-1 ? list.size()-1 : Math.min(list.size()-1, end);
+		
+		int ol = low;
+		int oh = high;
+		
+		while (low <= high) {
+			int mid = (low + high) >>> 1;
+			int midVal = list.get(mid);
+			int cmp = Integer.compare(midVal, value);
+			if (cmp < 0)
+				low = mid + 1;
+			else if (cmp > 0)
+				high = mid - 1;
+			else {
+				while(mid>0 && list.get(mid) >= value) {
+					mid--;
+				}
+				return mid;
+			}
+		}
+		int mid = Math.min(Math.max(ol, low), oh);
+		if(value >= list.get(oh)) {
+			value = list.get(oh);
+		}
+		while(mid>0 && list.get(mid) >= value) {
+			mid--;
+		}
+		return mid;
+	}
+	
+	public static boolean reciprocalOverlap(int s1, int e1, int s2, int e2, double percent) {
+		double nOverlapx100 = Math.max(0, Math.min(e1, e2) - Math.max(s1, s2) + 1);
+		double width1 = e1 - s1;
+		double width2 = e2 - s2;
+		return ((nOverlapx100 / width1 >= percent) && (nOverlapx100 / width2 >= percent));
+	}
+	
+	public void addIndexToCluster(HashMap<String, HashSet<Integer>> C2I, String CC, HashMap<Integer, TreeSet<Integer>> I2I, int CI, HashSet<Integer> indexesClustered, HashMap<Integer, String> indexToCluster, HashMap<String, String> clusterToClusterLink) {
+		
+		PriorityQueue<Integer> toClusterQueue = new PriorityQueue<Integer>();
+		HashSet<Integer> indexesQueued = new HashSet<>();
+		HashSet<Integer> currentIndexesClustered = new HashSet<>();
+		
+		toClusterQueue.add(CI);
+		
+		while(toClusterQueue.size() != 0) {
+			int currentIndex = toClusterQueue.poll();
+			
+			for(Integer child : I2I.get(currentIndex)) {
+				
+				if(indexToCluster.containsKey(child) && (indexToCluster.get(child).equals(CC) == false) && clusterToClusterLink.containsKey(CC)==false) {
+					String correctCC = indexToCluster.get(child);
+//					print("correction!: " + CC + " -> " + correctCC);
+					clusterToClusterLink.put(CC, correctCC);
+				}
+				
+				if(indexesClustered.contains(child)==false && indexesQueued.contains(child)==false && currentIndexesClustered.contains(child)==false) {
+					toClusterQueue.add(child);
+					indexesQueued.add(child);
+				}
+			}
+			
+			indexToCluster.put(currentIndex, CC);
+			C2I.get(CC).add(currentIndex);
+			currentIndexesClustered.add(currentIndex);
+			
+		}
+		
+		indexesClustered.addAll(currentIndexesClustered);
+		
+	}
 
 	/**
-	 * work in progress, you probably should not use this all this does is call svtk
+	 * work in progress, you probably should not use this
+	 * designed as a faster copy of  svtk bedcluster
+	 * 
 	 * 
 	 * @throws IOException
 	 * @throws InterruptedException
 	 */
-	public void svtk(String svtk_input, String svtk_output) throws IOException, InterruptedException {
-		Runtime r = Runtime.getRuntime();
-		Process p = r.exec("svtk bedcluster " + svtk_input + " " + svtk_output); // linux
-		p.waitFor();
-	}
-
-	/**
-	 * @deprecated A wrapper to call the full convertVCFsToBEDFormat() using generic
-	 *             arguements
-	 * @param wd
-	 * @param output
-	 * @throws IOException
-	 */
-	public void convertVCFsToBEDFormat(String wd, String output) throws IOException {
-		convertVCFsToBEDFormat(wd, output, "genotyped-segments-", ".vcf");
-	}
-
-	/**
-	 * @deprecated
-	 * @param wd          - the working directory where VCFs are stored. VCFs can be
-	 *                    in sub-directories.
-	 * @param output      - The output path for the final consolidated BED file
-	 * @param prefixRegex - prefix to trim from file name, eg "genotyped-segments-"
-	 * @param suffixRegex - suffix used to identify VCF files, used also to trim
-	 *                    from file name. eg ".vcf"
-	 * @throws IOException
-	 */
-	public void convertVCFsToBEDFormat_old(String wd, String output, String prefixRegex, String suffixRegex)
-			throws IOException {
-		System.out.println("WARNING: this method is deprecated");
-		File[] directories = new File(wd).listFiles(File::isDirectory);
-		System.out.println(Arrays.toString(directories));
-		System.out.println("n directories: " + directories.length);
-
-		ArrayList<String> all_bed_paths = new ArrayList<>();
-
-		// look through all directories in current working directory
-		for (int i = 0; i < directories.length; i++) {
-			int cnvNameCounter = 1; // might need to be long
-			String currentCluster = directories[i].getAbsolutePath();
-
-			ArrayList<Path> currentClusterVCFsPATH = new ArrayList<>();
-			ArrayList<String> currentClusterVCFsNAME = new ArrayList<>();
-			ArrayList<String> sampleNames = new ArrayList<>();
-
-			// get a path to all the vcf files, similar to 'ls wd/*vcf'
-			Path p = Paths.get(currentCluster);
-			final int maxDepth = 1;
-			Stream<Path> matches = Files.find(p, maxDepth,
-					(path, basicFileAttributes) -> String.valueOf(path).endsWith(suffixRegex));
-			matches.filter(s -> s.getFileName().toString().endsWith(suffixRegex)).forEach(currentClusterVCFsPATH::add);
-			matches.close();
-			for (Path fp : currentClusterVCFsPATH) {
-				currentClusterVCFsNAME.add(fp.toAbsolutePath().toString());
-				sampleNames.add(fp.getFileName().toString().replaceAll(suffixRegex, ""));
+	public void bedcluster(String input, String output_file, String prefixString, boolean writeIndexFile, String indexFilePath) throws IOException, InterruptedException {
+		
+		DataFrame df = new DataFrame(input, true, "\\t", "@");
+		df.columnMapping.put("chr", 0);
+		df.fieldNames[0] = "chr";
+		df.sort();
+		double PERCENT_OVERLAP = 0.8;
+		String variantName = "variant_name";
+		boolean writeIndexMap = writeIndexFile;
+		
+		HashMap<String, Integer> chrToFirstIndex = new HashMap<>();
+		HashMap<String, Integer> chrToLastIndex = new HashMap<>();
+		ArrayList<Integer> starts = new ArrayList<>();
+		ArrayList<Integer> ends = new ArrayList<>();
+		for(int i = 0; i < df.nrow(); i++) {
+			chrToLastIndex.put(df.get("chr", i), i);
+			if (!chrToFirstIndex.containsKey(df.get("chr", i))) {
+				chrToFirstIndex.put(df.get("chr", i), i);
 			}
-
-			// if there are no vcfs in this folder, move on to the next folder
-			if (currentClusterVCFsPATH.size() < 2) {
-				continue;
-			}
-
-			// an arraylist containing vcf dataframes
-			ArrayList<DataFrame> VCFsArrayList = new ArrayList<>();
-			for (String vcfFile : currentClusterVCFsNAME) {
-				VCFsArrayList.add(new DataFrame(vcfFile, true, "\\t", "##"));
-			}
-
-			// create an array list of to store the new column names, eg "GT, CN, NP, QA"
-			// etc
-			String[] newColumns = VCFsArrayList.get(0).get("FORMAT", 0).split(":"); // an array list of the new field
-																					// names, eg 'GT', 'CN', etc
-			ArrayList<String> newColumnNames = new ArrayList<>();
-			for (int j = 0; j < newColumns.length; j++) {
-				newColumnNames.add(newColumns[j]);
-			}
-
-			// to store the full merged bed file
-			DataFrame fullClusterBed = new DataFrame();
-
-			for (int k = 0; k < VCFsArrayList.size(); k++) {
-				DataFrame currentVCF = new DataFrame();
-				ArrayList<String> chr = VCFsArrayList.get(k).getColumn("#CHROM");
-				ArrayList<String> start = VCFsArrayList.get(k).getColumn("POS");
-				ArrayList<String> end = VCFsArrayList.get(k).getColumn("ID");
-				for (int j = 0; j < end.size(); j++) { // Lord help me
-					end.set(j, end.get(j).split("_")[end.get(j).split("_").length - 1]);
-				}
-				ArrayList<String> name = new ArrayList<>();
-				for (int j = 0; j < VCFsArrayList.get(k).nrow(); j++) {
-					name.add(directories[i].getName() + "_cnv_" + cnvNameCounter);
-					cnvNameCounter++;
-				}
-				ArrayList<String> sample = new ArrayList<>();
-				for (int j = 0; j < VCFsArrayList.get(k).nrow(); j++) {
-					sample.add(sampleNames.get(k).replace(prefixRegex, "").replace(suffixRegex, ""));
-				}
-
-				// create a list of lists to store the new column values
-				ArrayList<ArrayList<String>> newColumnValues = new ArrayList<>();
-				// this is the raw string from the VCF, the last field name is the raw strings
-				// of interest, so length-1 is the right index
-				ArrayList<String> columnValues = VCFsArrayList.get(k)
-						.getColumn(VCFsArrayList.get(k).fieldNames[VCFsArrayList.get(k).fieldNames.length - 1]);
-
-				// sanity check
-				if (columnValues.size() != VCFsArrayList.get(k).nrow())
-					System.out.println("ERROR 2482469776");
-
-				// add a list to store every new field we will be parsing/adding
-				for (int j = 0; j < newColumnNames.size(); j++) {
-					newColumnValues.add(new ArrayList<>());
-				}
-
-				// for every row in the current VCF
-				for (int j = 0; j < VCFsArrayList.get(k).nrow(); j++) {
-					// for every new column
-					for (int l = 0; l < newColumnNames.size(); l++) {
-						// to the target column add the value in the split[] index
-						newColumnValues.get(l).add(columnValues.get(j).split(":")[l]);
-					}
-				}
-
-				ArrayList<String> columnNamesToAdd = new ArrayList<>();
-				ArrayList<ArrayList<String>> columnValuesToAdd = new ArrayList<>();
-
-				columnNamesToAdd.add("chr");
-				columnValuesToAdd.add(chr);
-				columnNamesToAdd.add("start");
-				columnValuesToAdd.add(start);
-				columnNamesToAdd.add("end");
-				columnValuesToAdd.add(end);
-				columnNamesToAdd.add("name");
-				columnValuesToAdd.add(name);
-				columnNamesToAdd.add("sample");
-				columnValuesToAdd.add(sample);
-				columnNamesToAdd.addAll(newColumnNames);
-				columnValuesToAdd.addAll(newColumnValues);
-				boolean temp_1 = currentVCF.addColumns(columnNamesToAdd, columnValuesToAdd);
-				if (!temp_1) {
-					System.out.println("eror 42721191233: " + currentClusterVCFsNAME.get(k));
-				}
-				// System.out.println(temp_1);
-				// label dups and dels
-				ArrayList<String> svtype = new ArrayList<>();
-				// VCFsArrayList.get(k).nrow() should now be equal to currentVCF?
-				// System.out.println(currentVCF.columnMapping.toString());
-				for (int j = 0; j < VCFsArrayList.get(k).nrow(); j++) {
-					// System.out.println(currentVCF.get("chr").size());
-					String currChr = currentVCF.getColumn("chr").get(j);
-					String svt = "NA_j";
-					if (currChr.contains("X") || currChr.contains("x")) {
-						svt = Integer.parseInt(currentVCF.getColumn("CN").get(j)) >= 2 ? "DUP" : "DEL";
-					} else if (currChr.contains("Y") || currChr.contains("y")) {
-						svt = Integer.parseInt(currentVCF.getColumn("CN").get(j)) >= 1 ? "DUP" : "DEL";
-					} else {
-						svt = Integer.parseInt(currentVCF.getColumn("CN").get(j)) >= 2 ? "DUP" : "DEL";
-					}
-					svtype.add(svt);
-				}
-				currentVCF.addColumn("svtype", svtype);
-
-				// remove rows where GT=0, this is not the most efficient way to remove indexes
-				// from arraylist
-				ArrayList<Integer> gtIsZero = new ArrayList<>();
-				for (int j = currentVCF.nrow() - 1; j >= 0; j--) {
-					if (currentVCF.get("GT", j).equals("0")) {
-						gtIsZero.add(j);
-					}
-				}
-				Collections.sort(gtIsZero, Collections.reverseOrder());
-				for (int j : gtIsZero) {
-					currentVCF.df.remove(j);
-				}
-
-				if (fullClusterBed.df.size() == 0) {
-					fullClusterBed = currentVCF;
-				} else {
-					boolean ctrl = fullClusterBed.rbind(currentVCF);
-					if (ctrl == false) {
-						System.out.println("error 23089438  " + k + " " + i);
-						System.out.println();
-					}
-				}
-			}
-
-			System.out.println(currentCluster + "\\" + directories[i].getName() + ".bed");
-			fullClusterBed.writeBed(currentCluster + "\\" + directories[i].getName() + ".java.bed");
-
-			all_bed_paths.add(currentCluster + "\\" + directories[i].getName() + ".java.bed");
+			
+			starts.add(Integer.parseInt(df.get("start", i)));
+			ends.add(Integer.parseInt(df.get("end", i)));
 		}
 
-		DataFrame fullMergedBed = new DataFrame(all_bed_paths.get(0), true, "\\t", "@");
-		for (int i = 1; i < all_bed_paths.size(); i++) {
-			fullMergedBed.rbind(new DataFrame(all_bed_paths.get(i), true, "\\t", "@"));
+		// map of end coordinate to last instance, could do the same for starts?
+		HashMap<String, ArrayList<Integer>> chrToSortedEnds = new HashMap<>();
+		HashMap<String, HashMap<Integer, Integer>> chrToEndToFirstIndex = new HashMap<>();
+		
+		for(String chr : chrToFirstIndex.keySet()) {
+			HashMap<Integer, Integer> endToFirstIndex = new HashMap<>();
+			int chrStart = chrToFirstIndex.get(chr);
+			int chrEnd = chrToLastIndex.get(chr);
+			ArrayList<Integer> rawEnds = new ArrayList<>();
+			for(int i = chrEnd; i >= chrStart; i--) {
+				int currEnd = ends.get(i);
+				rawEnds.add(currEnd);
+				endToFirstIndex.put(currEnd, i);
+			}
+			Collections.sort(rawEnds);
+			chrToSortedEnds.put(chr, rawEnds);
+			chrToEndToFirstIndex.put(chr, endToFirstIndex);
 		}
-		System.out.println(wd + output);
-		fullMergedBed.writeFile(wd + output, true);
+		
+		HashSet<Integer> checkedIndexes = new HashSet<>();
+		HashMap<Integer, TreeSet<Integer>> indexToIndexes = new HashMap<>();
+		
+		HashMap<String, Integer> visitedStarts = new HashMap<>();
+		HashMap<String, Integer> visitedEnds = new HashMap<>();
+		
+		HashMap<String, TreeSet<Integer>> observedOverlaps = new HashMap<>();
+		HashSet<String> newChrReset = new HashSet<>();
+		
+		HashSet<Integer> indexesClustered = new HashSet<>();
+		HashMap<String, HashSet<Integer>> clusterToIndexes = new HashMap<>();
+		
+		String prefix = prefixString;
+		int counter = 0;
+		String currentCluster = prefix + counter;
+		
+		BufferedWriter output = null;
+		if(writeIndexMap) {
+			File file = new File(indexFilePath);
+			output = new BufferedWriter(new FileWriter(file));			
+		}
+		
+		HashMap<String, String> clusterToClusterLink = new HashMap<>();
+		HashMap<Integer, String> indexToCluster = new HashMap<>();
+		
+		for(int i = 0; i < df.nrow(); i++) {
+			int currStart = starts.get(i);
+			int currEnd = ends.get(i);
+			String currChr = df.get("chr", i);
+			String currType = df.get("svtype", i);
+			
+			newChrReset.add(currChr);
+			if(newChrReset.size() > 1) {
+				
+				
+				newChrReset = new HashSet<>();
+				visitedStarts.clear();
+				visitedStarts.clear();
+				observedOverlaps.clear();
+				
+				ArrayList<Integer> indexKeys = new ArrayList<>();
+				indexKeys.addAll(indexToIndexes.keySet());
+				Collections.sort(indexKeys);
+				
+				for(Integer k : indexKeys){
+					if(!indexesClustered.contains(k)) {
+						clusterToIndexes.put(currentCluster, new HashSet<>());
+						addIndexToCluster(clusterToIndexes, currentCluster, indexToIndexes, k, indexesClustered, indexToCluster, clusterToClusterLink);
+						counter++;
+						currentCluster = prefix + counter;
+					}
+				}
+				
+				if(writeIndexMap) {
+					ArrayList<Integer> temp = new ArrayList<>();
+					temp.addAll(indexToIndexes.keySet());
+					Collections.sort(temp);
+					for(int x : temp) {
+						output.write(x + "\t" + indexToIndexes.get(x).toString() +  "\n");
+					}					
+				}
 
+				indexToIndexes.clear();
+				indexToCluster.clear();
+			}
+
+			indexToIndexes.put(i, new TreeSet<>());
+			checkedIndexes.add(i);
+			
+			String startKey = currChr + "_" + currStart;
+			int indexS;
+			if(visitedStarts.containsKey(startKey)) {
+				indexS = visitedStarts.get(startKey);
+			} else {
+				int indexOfSortedTargetEnd = BinarySearchLowerBound(chrToSortedEnds.get(currChr), currStart, -1, -1);
+				int targetEnd = chrToSortedEnds.get(currChr).get(indexOfSortedTargetEnd);
+				indexS = chrToEndToFirstIndex.get(currChr).get(targetEnd);
+				visitedStarts.put(startKey, indexS);
+			}
+			
+			String endKey = currChr + "_" + currEnd;
+			int indexE;
+			if(visitedEnds.containsKey(endKey)) {
+				indexE = visitedEnds.get(endKey);
+			} else {
+				int chrStart = chrToFirstIndex.get(df.get("chr", i));
+				int chrEnd = chrToLastIndex.get(df.get("chr", i));
+				indexE = BinarySearchUpperBound(starts, currEnd, chrStart, chrEnd);
+				visitedEnds.put(endKey, indexE);
+			}
+			
+			String intervalKey = currChr +  "_" + currStart + "_" + currEnd + "_" + currType;
+			if(!observedOverlaps.containsKey(intervalKey)) {
+				for(int n = indexS; n <= indexE; n++) {
+					if(!checkedIndexes.contains(n) && currEnd >= starts.get(n) && currStart <= ends.get(n) && currType.equals(df.get("svtype", n)) && reciprocalOverlap(currStart, currEnd, starts.get(n), ends.get(n), PERCENT_OVERLAP)) {
+						indexToIndexes.get(i).add(n);
+					}
+				}
+				observedOverlaps.put(intervalKey, new TreeSet<>());
+				observedOverlaps.get(intervalKey).addAll(indexToIndexes.get(i));
+				
+			} else {
+				observedOverlaps.get(intervalKey).remove(Integer.valueOf(i));
+				indexToIndexes.get(i).addAll(observedOverlaps.get(intervalKey));
+			}
+
+		}
+		
+		visitedStarts.clear();
+		visitedStarts.clear();
+		observedOverlaps.clear();
+		ArrayList<Integer> indexKeys = new ArrayList<>();
+		indexKeys.addAll(indexToIndexes.keySet());
+		Collections.sort(indexKeys);
+		for(Integer k : indexKeys){
+			if(!indexesClustered.contains(k)) {
+				clusterToIndexes.put(currentCluster, new HashSet<>());
+				addIndexToCluster(clusterToIndexes, currentCluster, indexToIndexes, k, indexesClustered, indexToCluster, clusterToClusterLink);
+				counter++;
+				currentCluster = prefix + counter;
+				
+			}
+			
+		}
+		
+		if(writeIndexMap) {
+			ArrayList<Integer> temp = new ArrayList<>();
+			temp.addAll(indexToIndexes.keySet());
+			Collections.sort(temp);
+			for(int x : temp) {
+				output.write(x + "\t" + indexToIndexes.get(x).toString() +  "\n");
+			}
+			output.close();			
+		}
+		indexToIndexes.clear();
+		
+
+		//post-process
+		
+		ArrayList<String> cluster_labels = new ArrayList<>();
+		ArrayList<String> newStarts = new ArrayList<>();
+		ArrayList<String> newEnds = new ArrayList<>();
+		
+		ArrayList<String> ID = new ArrayList<>();
+		for(int i = 0; i < df.nrow(); i++) {
+			cluster_labels.add("Error");
+			newStarts.add("Error");
+			newEnds.add("Error");
+			ID.add(Integer.toString(i));
+		}
+		for(String clusterName : clusterToIndexes.keySet()) {
+			String mainClusterName = clusterName;
+			while(clusterToClusterLink.containsKey(mainClusterName)) {
+				mainClusterName = clusterToClusterLink.get(mainClusterName);
+			}
+			
+			for(int i : clusterToIndexes.get(clusterName)) {
+				cluster_labels.set(i, mainClusterName);
+			}
+		}
+
+		ArrayList<String> columnNamesToAdd = new ArrayList<>();
+		ArrayList<ArrayList<String>> columnValuesToAdd = new ArrayList<>();
+		
+		columnNamesToAdd.add(variantName);
+		columnNamesToAdd.add("ID");
+		
+		columnValuesToAdd.add(cluster_labels);
+		columnValuesToAdd.add(ID);
+		df.addColumns(columnNamesToAdd, columnValuesToAdd);
+		
+		// post process
+		// merge the same variant within sample
+		HashMap<String, HashMap<String, ArrayList<Integer>>> sampleToVariantToIndexes = new HashMap<>();
+		for(int i = 0; i < df.size(); i++) {
+			
+			String sample = df.get("sample", i);
+			if(!sampleToVariantToIndexes.containsKey(sample)) {
+				sampleToVariantToIndexes.put(sample, new HashMap<>());
+			}
+			
+			String variant = df.get(variantName, i);
+			if(!sampleToVariantToIndexes.get(sample).containsKey(variant)){
+				sampleToVariantToIndexes.get(sample).put(variant, new ArrayList<>());
+			}
+			
+			sampleToVariantToIndexes.get(sample).get(variant).add(i);
+		}
+		
+		
+		//it looks like a lot of nested loops, however there will only be i iterations total
+		HashSet<Integer> rowsToDelete = new HashSet<>();
+		ArrayList<String[]> rowsToAdd = new ArrayList<>();
+		for(String sample : sampleToVariantToIndexes.keySet()) {
+			for(String variant : sampleToVariantToIndexes.get(sample).keySet()) {
+				
+				if(sampleToVariantToIndexes.get(sample).get(variant).size() != 1) {
+					int minStart = Integer.MAX_VALUE;
+					int maxEnd = Integer.MIN_VALUE;
+					for(int i : sampleToVariantToIndexes.get(sample).get(variant)) {
+						minStart = Math.min(minStart, starts.get(i));
+						maxEnd = Math.max(maxEnd, ends.get(i));
+					}
+					String[] mergedRow = df.get(sampleToVariantToIndexes.get(sample).get(variant).get(0)).clone();
+					mergedRow[df.columnMapping.get("start")] = Integer.toString(minStart);
+					mergedRow[df.columnMapping.get("end")] = Integer.toString(maxEnd);
+					
+					rowsToAdd.add(mergedRow);
+					rowsToDelete.addAll( sampleToVariantToIndexes.get(sample).get(variant));
+				}
+			}
+		}
+
+		ArrayList<Integer> rowsToDeleteList = new ArrayList<>();
+		rowsToDeleteList.addAll(rowsToDelete);
+		Collections.sort(rowsToDeleteList, Collections.reverseOrder());
+		for(int i = 0; i < rowsToDeleteList.size(); i++) {
+			df.df.remove((int)rowsToDeleteList.get(i));
+		}
+		for(String[] newRow : rowsToAdd) {
+			df.df.add(newRow);
+		}
+		
+		
+		//calculate rmsstd, convert to median coordinates for start and end
+		// should probably make this a method
+		DecimalFormat format = new DecimalFormat("#.####");
+		HashMap<String, String> variantToRmsstd = new HashMap<>();
+		HashMap<String, ArrayList<Integer>> variantToIndexes = new HashMap<>();
+		HashMap<String, String> variantToMedianStartCoordinate = new HashMap<>();
+		HashMap<String, String> variantToMedianEndCoordinate = new HashMap<>();
+		for(int i = 0; i < df.size(); i++) {
+			String variant = df.get(variantName, i);
+			if(!variantToIndexes.containsKey(variant)) {
+				variantToIndexes.put(variant, new ArrayList<>());
+			}
+			variantToIndexes.get(variant).add(i);
+		}
+		for(String variant : variantToIndexes.keySet()) {
+			int n = variantToIndexes.get(variant).size();
+			double[] vstarts = new double[n];
+			double[] vends = new double[n];
+			for(int i = 0; i < n; i++) {
+				vstarts[i] = Double.parseDouble(df.get("start", variantToIndexes.get(variant).get(i)));
+				vends[i] = Double.parseDouble(df.get("end", variantToIndexes.get(variant).get(i)));
+			}
+			variantToMedianStartCoordinate.put(variant, median(vstarts));
+			variantToMedianEndCoordinate.put(variant, median(vends));
+			variantToRmsstd.put(variant, format.format((rmsstd(vstarts, vends))));
+		}
+		ArrayList<String> rmsstd = new ArrayList<>();
+		ArrayList<String> medStarts = new ArrayList<>();
+		ArrayList<String> medEnds = new ArrayList<>();
+		for(int i = 0; i < df.size(); i++) {
+			rmsstd.add(variantToRmsstd.get(df.get(variantName, i)));
+			medStarts.add(variantToMedianStartCoordinate.get(df.get(variantName, i)));
+			medEnds.add(variantToMedianEndCoordinate.get(df.get(variantName, i)));
+		}
+		
+
+		columnNamesToAdd = new ArrayList<>();
+		columnValuesToAdd = new ArrayList<>();
+		
+		columnNamesToAdd.add("rmsstd");
+		columnNamesToAdd.add("medStart");
+		columnNamesToAdd.add("medEnd");
+		
+		columnValuesToAdd.add(rmsstd);
+		columnValuesToAdd.add(medStarts);
+		columnValuesToAdd.add(medEnds);
+		
+		df.addColumns(columnNamesToAdd, columnValuesToAdd);
+		
+		
+		df.writeFile(output_file, true);
+		
 	}
+	
+	/**
+	 * returns the int median of a double array, for reasons
+	 * @param i
+	 * @return
+	 */
+	public String median(double[] i) {
+		Arrays.sort(i);
+//		return Integer.toString((int)(i[i.length/2]));
+		return Integer.toString((int)(
+				i.length%2!=0 ? 
+						i[i.length/2] : 
+						(i[(i.length-1)/2] + i[i.length/2])/2.0 + 0.5
+				));
+	}
+	
+	public double rmsstd(double[] starts, double[] ends) {
+		double SS = meanSS(starts) + meanSS(ends);
+		return Math.sqrt(SS);
+	}
+	
+	public double mean(double[] x) {
+		double sum = 0;
+		for(double d : x) {
+			sum += d;
+		}
+		return sum/x.length;
+	}
+	
+	public double meanSS(double[] x) {
+		double mu = mean(x);
+		
+		double sumSS = 0;
+		for(double d : x) {
+			sumSS += Math.pow((d - mu), 2);
+		}
+		
+		return sumSS/x.length;
+	}
+
+	
+	public void calculateFrequency(String input, String variantColumn, String output) throws IOException {
+
+		DataFrame df = new DataFrame(input, true, "\\t", "@");
+//		df.columnMapping.put("chr", 0);
+//		df.fieldNames[0] = "chr";
+		df.sort();
+		
+		HashMap<String, Double> variantToCount = new HashMap<>();
+		HashSet<String> samples = new HashSet<>();
+		
+		for(int i = 0; i < df.size(); i++) {
+			String variant = df.get(variantColumn, i);
+			if(!variantToCount.containsKey(variant)) {
+				variantToCount.put(variant, 0.0);
+			}
+			variantToCount.put(variant, variantToCount.get(variant)+1);
+			samples.add(df.get("sample", i));
+		}
+		
+		double nSamples = samples.size();
+		DecimalFormat format = new DecimalFormat("#.####");
+		
+		HashMap<String, String> variantToVAF = new HashMap<>();
+		for(String variant : variantToCount.keySet()) {
+			variantToVAF.put(variant, format.format(variantToCount.get(variant)/nSamples));
+		}
+		
+		ArrayList<String> vaf = new ArrayList<>();
+		ArrayList<String> vac = new ArrayList<>();
+		for(int i = 0; i < df.size(); i++) {
+			String variant = df.get(variantColumn, i);
+			vaf.add(variantToVAF.get(variant));
+			vac.add(Double.toString(variantToCount.get(variant)));
+		}
+		
+		
+		ArrayList<String> columnNamesToAdd = new ArrayList<>();
+		ArrayList<ArrayList<String>> columnValuesToAdd = new ArrayList<>();
+		
+		columnNamesToAdd.add("vaf");
+		columnNamesToAdd.add("vac");
+		
+		columnValuesToAdd.add(vaf);
+		columnValuesToAdd.add(vac);
+		df.addColumns(columnNamesToAdd, columnValuesToAdd);
+		df.writeFile(output, true);
+	}
+	
+	
 
 	/**
 	 * 
@@ -2273,7 +2619,7 @@ public class gCNV_helper {
 	}
 
 	/**
-	 * 
+	 * @deprecated
 	 * @param entityPath
 	 * @param wd
 	 * @throws IOException
@@ -2585,7 +2931,9 @@ public class gCNV_helper {
 									barcodeCountsFiles.get(currentFile));
 							countsDF = null; // java gc is a fickle mistress
 						} catch (IOException e) {
+							System.out.println();
 							e.printStackTrace();
+							System.out.println("error with file: " + currentFile);
 						}
 					}
 				}
@@ -2718,21 +3066,32 @@ public class gCNV_helper {
 		String[] command;
 		if (System.getProperty("os.name").contains("indows")) {
 			String[] dosCommand = { "bash", "-c", "'cat", filesFile, "|", "gsutil", "-m", "cp", "-I",
-					pathToDownloadToUnix, "'" };
+					pathToDownloadToUnix + "/", "'" };
 			command = dosCommand;
+			
+			System.out.println(String.join(" ", command));
+
+			try {
+				new ProcessBuilder(command).inheritIO().start().waitFor();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		} else {
 			System.out.println(
 					"WARNING: this download functionality has not been tested on macOS/linux, please report any issues");
-			String[] unixCommand = { "cat", filesFile, "|", "gsutil", "cp", "-I", pathToDownloadToUnix };
+			String[] unixCommand = {"/bin/sh", "-c", "cat " + filesFile + " | gsutil -m cp -I " +  pathToDownloadToUnix + "/" };
 			command = unixCommand;
-		}
-		System.out.println(String.join(" ", command));
+			
+			System.out.println(String.join(" ", command));
 
-		try {
-			new ProcessBuilder(command).inheritIO().start().waitFor();
-		} catch (IOException e) {
-			e.printStackTrace();
+			try {
+				new ProcessBuilder(command).inheritIO().start().waitFor();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+	    
 		}
+		
 	}
 
 	/**
@@ -2907,7 +3266,7 @@ public class gCNV_helper {
 		sc.close();
 	}
 
-	public void runBetter(String[] args) throws IOException, InterruptedException {
+	public void run(String[] args) throws IOException, InterruptedException {
 		System.out.println();
 		if (args.length == 0) {
 			printOptionsShort();
@@ -2944,6 +3303,26 @@ public class gCNV_helper {
 			} else {
 				System.out.println("wrong input");
 			}
+		}
+		case "bedcluster" -> {
+			String INPUT_PATH = args[1];
+			String OUTPUT_PATH = args[2];
+			if(args.length == 3) {
+				this.bedcluster(INPUT_PATH, OUTPUT_PATH, "suffix_", false, "");
+			} else if(args.length == 4) {
+				String prefix = args[3];
+				this.bedcluster(INPUT_PATH, OUTPUT_PATH, prefix, false, "");
+			} else if(args.length == 5) {	
+				String prefix = args[3];
+				String META_PATH = args[4];
+				this.bedcluster(INPUT_PATH, OUTPUT_PATH, prefix, true, META_PATH);
+			}
+		}
+		case "calculateFrequency" -> {
+			String INPUT_PATH = args[1];
+			String variantColumn = args[2];
+			String OUTPUT_PATH = args[3];
+			this.calculateFrequency(INPUT_PATH, variantColumn, OUTPUT_PATH);
 		}
 		case "condenseBedtoolsIntersect" -> {
 			String INPUT_PATH = args[1];
@@ -3091,107 +3470,5 @@ public class gCNV_helper {
 	}
 	
 
-	/**
-	 * @deprecated
-	 * @param args
-	 * @throws IOException
-	 * @throws InterruptedException
-	 */
-	public void run(String[] args) throws IOException, InterruptedException {
-		System.out.println();
-		if (args.length == 0 || args[0].contains("-help") || args[0].contains("-h")) {
-			printOptions();
-		} else if (args[0].equals("getBarcodeCounts")) {
-			if (args.length == 3) {
-				getBarcodeCounts(args[1], args[2]);
-			} else if (args.length == 4) {
-				getBarcodeCounts(args[1], args[2], args[3]);
-			}
-		} else if (args[0].equals("getCountsMatrix")) {
-			if (args.length == 3) {
-				getCountsMatrix(args[1], args[2]);
-			} else if (args.length == 4) {
-				getCountsMatrix(args[1], args[2], args[3]);
-			}
-		} else if (args[0].equals("downloadSegmentsVCFs")) {
-			if (args.length == 3) {
-				downloadSegmentsVCFs(args[1], args[2]);
-			} else if (args.length == 4) {
-				downloadSegmentsVCFs(args[1], args[2], args[3]);
-			}
-		} else if (args[0].equals("convertVCFsToBEDFormat")) {
-			if (args.length == 3) {
-				convertVCFsToBEDFormat(args[1], args[2]);
-			} else if (args.length == 5) {
-				convertVCFsToBEDFormat(args[1], args[2], args[3], args[4]);
-			}
-		} else if (args[0].equals("svtkMatch")) {
-			if (args.length == 4) {
-				svtkMatch(args[1], args[2], args[3]);
-			}
-		} else if (args[0].equals("getCountsMatrixBuffered")) {
-			if (args.length == 4) {
-				getCountsMatrixBuffered(args[1], args[2], args[3]);
-			} else if (args.length == 5) {
-				getCountsMatrixBuffered(args[1], args[2], args[3], Integer.parseInt(args[4]));
-			}
-		} else if (args[0].equals("getPerSampleMetrics")) {
-			if (args.length == 4) {
-				getPerSampleMetrics(args[1], args[2], args[3], true);
-			}
-		} else if (args[0].equals("labelMedianQS")) {
-			if (args.length == 5) {
-				labelMedianQS(args[1], args[2], args[3], args[4]);
-			}
-		} else if (args[0].equals("jointCallVCF")) {
-			if (args.length == 7) {
-				jointCallVCF(args[1], args[2], args[3], args[4], args[5], args[6]);
-			} else if (args.length == 5) {
-				jointCallVCF(args[1], args[2], args[3], args[4]);
-			}
-		} else if (args[0].equals("annotateWithGenes")) {
-			if (args[1].contains("strict")) {
-				ArrayList<Gene> genes = parseGTFFile(args[3]);
-				if (args.length == 6) {
-					annotateGenesPercentBased(genes, args[2], args[4], args[5]);
-				} else if (args.length == 5) {
-					annotateGenesPercentBased(genes, args[2], args[4], "1,2,3,5");
-				}
-
-			} else if (args[1].contains("any")) {
-				ArrayList<Gene> genes = parseGTFFile(args[3]);
-				if (args.length == 6) {
-					annotateGenesAnyOverlap(genes, args[2], args[4], args[5]);
-				} else if (args.length == 5) {
-					annotateGenesAnyOverlap(genes, args[2], args[4], "1,2,3,5");
-				}
-			}
-		} else if (args[0].equals("condenseBedtoolsIntersect")) {
-			condenseBedtoolsIntersect(args[1], args[2], args[3], args[4], args[5]);
-		} else if (args[0].equals("defragment")) {
-			this.defragment(args[1], args[2]);
-		} else if (args[0].equals("subsetAnnotations")) {
-			ArrayList<String> annotationSubsets = new ArrayList<>();
-			for (int i = 4; i < args.length; i++) {
-				annotationSubsets.add(args[i]);
-			}
-			this.subsetAnnotations(args[1], args[2], args[3], args[4], annotationSubsets);
-		} else if (args[0].equals("validateSubsetAnnotations")) {
-			ArrayList<String> annotationSubsets = new ArrayList<>();
-			for (int i = 2; i < args.length; i++) {
-				annotationSubsets.add(args[i]);
-			}
-			// this.subsetAnnotations(args[1], args[2], args[3], args[4],
-			// annotationSubsets);
-			this.validateSubsetAnnotations(args[1], annotationSubsets);
-		} else if (args[0].equals("convertToEnsemble")) {
-			this.convertToEnsemble(args[1], args[2], args[3], args[4]);
-
-		} else if (args[0].equals("countExons")) {
-			this.countExons(args[1], args[2], args[3], args[4]);
-		} else {
-			System.out.println("unknown command");
-		}
-	}
 
 }

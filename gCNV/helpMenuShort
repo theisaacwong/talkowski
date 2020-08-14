@@ -1,0 +1,45 @@
+- addGnomadAnnotations [input] [output] [gencode_gtf] [gene_column_name]
+
+- annotateWithGenes [mode] [gencode_gtf] [input] [output] [svtype_column_name]	
+
+- bedcluster [input] [output] {prefix} {meta_file_output}
+
+- calculateFrequency [input] [variant_column_name] [output]
+
+- condenseBedtoolsIntersect [input] [output] [columnsToHashOn] [columnsToMerge] [columnsToKeep]
+
+- convertToEnsemble [input] [output] [geneColumnName] [gencode_gtf]
+
+- convertVCFsToBEDFormat [directory] [output] [prefix_regex] [suffix_regex]
+
+- countExons [input] [gene_column_name] [gencode_gtf] [output] 
+
+- defragment [input] [output] [intervals]
+
+- downloadSegmentsVCFs [manifest] [directory] [column_name]
+
+- filter [input] [output]
+
+- getBarcodeCounts [manifest] [directory] [column_name]
+
+- getBEDtrack [directory] [output] [suffix]
+
+- getCountsMatrix [directory] [output] [suffix]
+
+- getCountsMatrixBuffered [directory] [output] [suffix] [buffer_size]
+
+- getPerSampleMetrics [input] [column_name] [output]
+
+- jointCallVCF [input] [output] [variant_column] [sample_column] [sep] [svtype_column]
+
+- labelMedianQS [input] [variantColumn] [qsColumn] [output]
+
+- simplify [input] [output] [column_to_aggregate_by] [columns_to_aggregate] [column_to_split_by]
+
+- subsetAnnotations [input] [main_output] [metadata_output] [gene_column_name] [gene_list_1] ... [gene_list_n]
+
+- svtkMatch [svtk_input] [svtk_output] [output]
+
+- transposeTSV [input] [output]
+
+- validateSubsetAnnotations [gencode_gtf] [gene_list_1] ... [gene_list_n]

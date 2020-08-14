@@ -1,11 +1,30 @@
+addGnomadAnnotations [input] [output] [gencode_gtf] [gene_column_name]
+	add gnomAD gene annotation scheme column for a given column of genes
+	[input] - input file 
+	[output] - output file
+	[gencode_gtf] - gencode gtf file
+	[gene_column_name] - name of gene column
+
 annotateWithGenes [mode] [gencode_gtf] [input] [output] [svtype_column_name]
 	annotate a bed file with genes
 	[mode] - either "any" (at least 1 bp overlap) or "strict" (10/75% DEL/DUP exon space overlap) 
 	[gencode_gtf] - path to gencode gtf file
-	[intput] - input bed file
+	[input] - input bed file
 	[output] - output path
 	[svtype_column_name] - name of column containing DEL/DUP info
-	
+
+bedcluster [input] [output] {prefix} {meta_file_output}
+	cluster SV calls based on reciprocal overlap
+	[input] - input file
+	[output] - output file
+	{prefix} - optional - prefix for variant names 
+	{meta_file_output} - optional - clustering traceback file 
+
+calculateFrequency [input] [variant_column_name] [output]
+	[input]
+	[variant_column_name]
+	[output]
+
 condenseBedtoolsIntersect [input] [output] [columnsToHashOn] [columnsToMerge] [columnsToKeep]
 	basically bedtoolc intersect -c but with more options. Merge successive lines based on certain columns and merge the values of specified fields
 	[input] - input file
@@ -46,12 +65,23 @@ downloadSegmentsVCFs [manifest] [directory] [column_name]
 	[manifest] - full path to sample_set_entity.tsv file
 	[directory] - Directory to download files to, w/ trailing '/'
 	[column_name] - name of manifest column. eg 'segment_vcfs'
-	
+
+filter [input] [output]
+	Apply filter metrics to CNVs
+	[input] -  input
+	[output] - output
+
 getBarcodeCounts [manifest] [directory] [column_name]
 	Download read count files specified in entity file
 	[manifest] - full path to sample_set_entity.tsv file
 	[directory] - Directory to download files to, w/ trailing '/'
 	[column_name] - name of manifest column. eg 'segment_vcfs
+	
+getBEDtrack [directory] [output] [suffix]
+	Read in all read count files and generate a bed track file
+	[directory] - directory where read count files are located, searches recursively
+	[output]- output path 
+	[suffix] - The regex suffix used to identify counts files. eg '.barcode.counts.tsv'
 	
 getCountsMatrix [directory] [output] [suffix]
 	Read in all read count files and generate a matrix file
@@ -103,6 +133,16 @@ subsetAnnotations [input] [main_output] [metadata_output] [gene_column_name] [ge
 	[metadata_output]- output path
 	[gene_column_name] - name of gene column to subset
 	[gene_list_1] ... [gene_list_n] - space separated list of gene lists
+
+svtkMatch [svtk_input] [svtk_output] [output]
+	[svtk_input] - input file to svtk bedcluster
+	[svtk_output] - output file of svtk bedcluster
+	[output] - output file
+
+transposeTSV [input] [output]
+	transpose a tsv file
+	[input]
+	[output]
 
 validateSubsetAnnotations [gencode_gtf] [gene_list_1] ... [gene_list_n]
 	check that genes from list to be subsetted were originally labeled for in the source gtf file
