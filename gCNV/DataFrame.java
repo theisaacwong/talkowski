@@ -240,6 +240,10 @@ public class DataFrame {
 		while (sc.hasNextLine()) {
 			try{line = sc.nextLine();} catch(Exception e){System.out.println(e);}
 			df.add(line.split(delimiter, -1));
+//			if(df.get(df.size()-1).length != this.fieldNames.length) {
+//				System.out.println(this.FILE_PATH);
+//				System.out.println(String.join(" ", df.get(df.size()-1)));
+//			}
 			for(int i = 0; i < df.get(df.size()-1).length; i++) {
 				if(df.get(df.size()-1)[i].equals("")) {
 					df.get(df.size()-1)[i] = "0";

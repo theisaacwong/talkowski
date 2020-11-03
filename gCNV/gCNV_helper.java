@@ -58,7 +58,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.19";
+	public static final String VERSION = "2.21";
 
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
@@ -66,14 +66,14 @@ public class gCNV_helper {
 	}
 
 	public static void main(String[] args) throws IOException, InterruptedException {
-
+		
 		gCNV_helper g = new gCNV_helper(args);
 		System.out.println(g.toString());
 		System.out.println("version " + VERSION);
-//		try {
-//			g.checkVersion();
-//		} catch (Exception e) {
-//		}
+		try {
+			g.checkVersion();
+		} catch (Exception e) {
+		}
 		System.out.println("Java version: " + System.getProperty("java.version"));
 		System.out.println("Heap Size: " + getHeapSize());
 		start();
@@ -428,6 +428,53 @@ public class gCNV_helper {
 		}
 
 		gcnv.addColumn(geneColumnName + "_Ensemble_ID", ensembleIDcolummn);
+		gcnv.writeFile(OUTPUT, true);
+	}
+	
+
+	public void convertToGeneID(String GCNV_INPUT, String OUTPUT, String ensembleColumnName, String gencodeGTF) throws IOException {
+		print("reading annotation file");
+
+		//HashMap<String, String> nameToEnsembleID = new HashMap<>();
+		HashMap<String, String> ensembleIDToGene = new HashMap<>();
+
+		Pattern geneNamePattern = Pattern.compile("(?<=gene_name \").+?(?=\")");
+		Pattern ensemblePattern = Pattern.compile("(?<=gene_id \").+?(?=\")");
+
+		FileInputStream inputStream = new FileInputStream(gencodeGTF);
+		Scanner gtf = new Scanner(inputStream, "UTF-8");
+		while (gtf.hasNext()) {
+			String line = gtf.nextLine();
+			if (line.startsWith("#"))
+				continue;
+
+			Matcher geneNameMatcher = geneNamePattern.matcher(line);
+			String geneName = geneNameMatcher.find() ? geneNameMatcher.group() : "-1";
+
+			Matcher ensembleMatcher = ensemblePattern.matcher(line);
+			String ensemble = ensembleMatcher.find() ? ensembleMatcher.group() : "-1";
+
+//			nameToEnsembleID.put(geneName, ensemble);
+			ensembleIDToGene.put(ensemble, geneName);
+
+		}
+		gtf.close();
+
+//		nameToEnsembleID.put("None", "None");
+		ensembleIDToGene.put("None", "None");
+
+		DataFrame gcnv = new DataFrame(GCNV_INPUT, true, "\\t", "#");
+		ArrayList<String> geneNameColumn = new ArrayList<>();
+		for (int i = 0; i < gcnv.nrow(); i++) {
+			ArrayList<String> geneNames = new ArrayList<>();
+			String[] ensembleIDs = gcnv.get(ensembleColumnName, i).split(",");
+			for (String ensembleID : ensembleIDs) {
+				geneNames.add(ensembleIDToGene.get(ensembleID));
+			}
+			geneNameColumn.add(String.join(",", geneNames));
+		}
+
+		gcnv.addColumn(ensembleColumnName + "_geneName_", geneNameColumn);
 		gcnv.writeFile(OUTPUT, true);
 	}
 
@@ -2229,10 +2276,91 @@ public class gCNV_helper {
 		}
 		
 		
-		//calculate rmsstd, convert to median coordinates for start and end
-		// should probably make this a method
+//		//calculate rmsstd, convert to median coordinates for start and end
+//		// should probably make this a method
+//		DecimalFormat format = new DecimalFormat("#.####");
+//		HashMap<String, String> variantToRmsstd = new HashMap<>();
+//		HashMap<String, ArrayList<Integer>> variantToIndexes = new HashMap<>();
+//		HashMap<String, String> variantToMedianStartCoordinate = new HashMap<>();
+//		HashMap<String, String> variantToMedianEndCoordinate = new HashMap<>();
+//		for(int i = 0; i < df.size(); i++) {
+//			String variant = df.get(variantName, i);
+//			if(!variantToIndexes.containsKey(variant)) {
+//				variantToIndexes.put(variant, new ArrayList<>());
+//			}
+//			variantToIndexes.get(variant).add(i);
+//		}
+//		for(String variant : variantToIndexes.keySet()) {
+//			int n = variantToIndexes.get(variant).size();
+//			double[] vstarts = new double[n];
+//			double[] vends = new double[n];
+//			for(int i = 0; i < n; i++) {
+//				vstarts[i] = Double.parseDouble(df.get("start", variantToIndexes.get(variant).get(i)));
+//				vends[i] = Double.parseDouble(df.get("end", variantToIndexes.get(variant).get(i)));
+//			}
+//			variantToMedianStartCoordinate.put(variant, median(vstarts));
+//			variantToMedianEndCoordinate.put(variant, median(vends));
+//			variantToRmsstd.put(variant, format.format((rmsstd(vstarts, vends))));
+//		}
+//		ArrayList<String> rmsstd = new ArrayList<>();
+//		ArrayList<String> medStarts = new ArrayList<>();
+//		ArrayList<String> medEnds = new ArrayList<>();
+//		for(int i = 0; i < df.size(); i++) {
+//			rmsstd.add(variantToRmsstd.get(df.get(variantName, i)));
+//			medStarts.add(variantToMedianStartCoordinate.get(df.get(variantName, i)));
+//			medEnds.add(variantToMedianEndCoordinate.get(df.get(variantName, i)));
+//		}
+//
+//		columnNamesToAdd = new ArrayList<>();
+//		columnValuesToAdd = new ArrayList<>();
+//		
+//		columnNamesToAdd.add("rmsstd");
+//		columnNamesToAdd.add("medStart");
+//		columnNamesToAdd.add("medEnd");
+//		
+//		columnValuesToAdd.add(rmsstd);
+//		columnValuesToAdd.add(medStarts);
+//		columnValuesToAdd.add(medEnds);
+//		
+//		df.addColumns(columnNamesToAdd, columnValuesToAdd);
+		
+
+		//calculate rmsstd
 		DecimalFormat format = new DecimalFormat("#.####");
 		HashMap<String, String> variantToRmsstd = new HashMap<>();
+		HashMap<String, ArrayList<Integer>> variantToIndexes = new HashMap<>();
+		for(int i = 0; i < df.size(); i++) {
+			String variant = df.get(variantName, i);
+			if(!variantToIndexes.containsKey(variant)) {
+				variantToIndexes.put(variant, new ArrayList<>());
+			}
+			variantToIndexes.get(variant).add(i);
+		}
+		for(String variant : variantToIndexes.keySet()) {
+			int n = variantToIndexes.get(variant).size();
+			double[] vstarts = new double[n];
+			double[] vends = new double[n];
+			for(int i = 0; i < n; i++) {
+				vstarts[i] = Double.parseDouble(df.get("start", variantToIndexes.get(variant).get(i)));
+				vends[i] = Double.parseDouble(df.get("end", variantToIndexes.get(variant).get(i)));
+			}
+			variantToRmsstd.put(variant, format.format((rmsstd(vstarts, vends))));
+		}
+		ArrayList<String> rmsstd = new ArrayList<>();
+		for(int i = 0; i < df.size(); i++) {
+			rmsstd.add(variantToRmsstd.get(df.get(variantName, i)));
+		}
+		
+		df.addColumn("rmsstd", rmsstd);
+		
+		
+		df.writeFile(output_file, true);
+		
+	}
+	
+	public void convertCoordinatesToVariantMedianValues(String variantName, String input, String output) throws IOException {
+		DataFrame df = new DataFrame(input, true, "\\t", "@");
+
 		HashMap<String, ArrayList<Integer>> variantToIndexes = new HashMap<>();
 		HashMap<String, String> variantToMedianStartCoordinate = new HashMap<>();
 		HashMap<String, String> variantToMedianEndCoordinate = new HashMap<>();
@@ -2253,34 +2381,23 @@ public class gCNV_helper {
 			}
 			variantToMedianStartCoordinate.put(variant, median(vstarts));
 			variantToMedianEndCoordinate.put(variant, median(vends));
-			variantToRmsstd.put(variant, format.format((rmsstd(vstarts, vends))));
 		}
-		ArrayList<String> rmsstd = new ArrayList<>();
 		ArrayList<String> medStarts = new ArrayList<>();
 		ArrayList<String> medEnds = new ArrayList<>();
 		for(int i = 0; i < df.size(); i++) {
-			rmsstd.add(variantToRmsstd.get(df.get(variantName, i)));
 			medStarts.add(variantToMedianStartCoordinate.get(df.get(variantName, i)));
 			medEnds.add(variantToMedianEndCoordinate.get(df.get(variantName, i)));
 		}
-		
 
-		columnNamesToAdd = new ArrayList<>();
-		columnValuesToAdd = new ArrayList<>();
+		int s = df.columnMapping.get("start");
+		int e = df.columnMapping.get("end");
 		
-		columnNamesToAdd.add("rmsstd");
-		columnNamesToAdd.add("medStart");
-		columnNamesToAdd.add("medEnd");
+		for(int i = 0; i < df.nrow(); i++) {
+			df.df.get(i)[s] = medStarts.get(i);
+			df.df.get(i)[e] = medEnds.get(i);
+		}
 		
-		columnValuesToAdd.add(rmsstd);
-		columnValuesToAdd.add(medStarts);
-		columnValuesToAdd.add(medEnds);
-		
-		df.addColumns(columnNamesToAdd, columnValuesToAdd);
-		
-		
-		df.writeFile(output_file, true);
-		
+		df.writeFile(output, true);
 	}
 	
 	/**
@@ -3331,6 +3448,12 @@ public class gCNV_helper {
 			String columnsToMergeString = args[4];
 			String columnsToKeepString = args[5];
 			this.condenseBedtoolsIntersect(INPUT_PATH, OUTPUT_PATH, columnsToHashOnString, columnsToMergeString, columnsToKeepString);
+		}
+		case "convertCoordinatesToVariantMedianValues" -> {
+			String variantName = args[1];
+			String INPUT_PATH = args[2];
+			String OUTPUT_PATH = args[3];
+			this.convertCoordinatesToVariantMedianValues(variantName, INPUT_PATH, OUTPUT_PATH);
 		}
 		case "convertToEnsemble" -> {
 			String GCNV_INPUT = args[1];

@@ -8,6 +8,8 @@
 
 - condenseBedtoolsIntersect [input] [output] [columnsToHashOn] [columnsToMerge] [columnsToKeep]
 
+- convertCoordinatesToVariantMedianValues [variant_column_name] [input] [output]
+
 - convertToEnsemble [input] [output] [geneColumnName] [gencode_gtf]
 
 - convertVCFsToBEDFormat [directory] [output] [prefix_regex] [suffix_regex]
