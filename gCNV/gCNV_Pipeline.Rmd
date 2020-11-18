@@ -593,6 +593,24 @@ system2("java", sprintf("-Xmx16G -jar %s annotateWithGenes strict %s %sgcnv_temp
 system2("java", sprintf("-Xmx16G -jar %s countExons %gcnv_temp3.bed genes_strict_overlap %s %sgcnv_annotated.bed", jar_path, wd, gencode_gtf, wd))
 ```
 
+alternatively, use this:
+
+```{}
+#!/bin/bash
+name=""
+gtf="/mgh/references/gencode.v34.annotation.gtf"
+java -jar /mgh/scripts/gCNV_helper.jar convertVCFsToBEDFormat ./ ${name}_vcftobed.bed genotyped-segments- .vcf
+java -jar /mgh/scripts/gCNV_helper.jar bedcluster ${name}_vcftobed.bed  ${name}_bedclustered.bed 
+java -jar /mgh/scripts/gCNV_helper.jar defragment ${name}_bedclustered.bed ${name}_defragmented.bed
+java -jar /mgh/scripts/gCNV_helper.jar calculateFrequency ${name}_defragmented.bed variant_name ${name}_frequencied.bed
+java -jar /mgh/scripts/gCNV_helper.jar filter ${name}_frequencied.bed ${name}_filtered.bed
+java -jar /mgh/scripts/gCNV_helper.jar annotateWithGenes any ${gtf} ${name}_filtered.bed ${name}_intermediate1.bed svtype
+java -jar /mgh/scripts/gCNV_helper.jar countExons ${name}_intermediate1.bed genes_any_overlap ${gtf} ${name}_intermediate2.bed
+java -jar /mgh/scripts/gCNV_helper.jar annotateWithGenes strict ${gtf} ${name}_intermediate2.bed ${name}_intermediate3.bed svtype
+java -jar /mgh/scripts/gCNV_helper.jar countExons ${name}_intermediate3.bed genes_strict_overlap ${gtf} ${name}_annotated.bed
+```
+
+
 `gcnv_annotated.bed` is the main output file. You can use other gCNV_helper methods to produce other metadata files or add metadata columns to this file at your own discretion
 
 
