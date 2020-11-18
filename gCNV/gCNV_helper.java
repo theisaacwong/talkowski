@@ -58,7 +58,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.21";
+	public static final String VERSION = "2.22";
 
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
@@ -491,8 +491,8 @@ public class gCNV_helper {
 		for (int i = 0; i < gcnv.nrow(); i++) {
 			String[] genes = gcnv.get(genesColumnName, i).split(",");
 			if (genes[0].equalsIgnoreCase("None")) {
-				nExonsColumn.add("NA");
-				totalExons.add("NA");
+				nExonsColumn.add("0");
+				totalExons.add("0");
 				continue;
 			}
 			ArrayList<String> nExons = new ArrayList<>();
@@ -2460,11 +2460,12 @@ public class gCNV_helper {
 		}
 		
 		double nSamples = samples.size();
-		DecimalFormat format = new DecimalFormat("#.####");
+		//DecimalFormat format = new DecimalFormat("#.####");
 		
 		HashMap<String, String> variantToVAF = new HashMap<>();
 		for(String variant : variantToCount.keySet()) {
-			variantToVAF.put(variant, format.format(variantToCount.get(variant)/nSamples));
+			//variantToVAF.put(variant, format.format(variantToCount.get(variant)/nSamples));
+			variantToVAF.put(variant, Double.toString(variantToCount.get(variant)/nSamples));
 		}
 		
 		ArrayList<String> vaf = new ArrayList<>();
