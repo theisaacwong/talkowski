@@ -2,7 +2,7 @@
 title: "gCNV pre and post processing"
 output: html_document
 author: Isaac Wong
-version: 2.21
+version: 2.22
 ---
 
 
