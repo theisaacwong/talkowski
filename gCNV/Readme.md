@@ -141,11 +141,6 @@ Please use the R markdown (.Rmd) file for the full pipeline.
 	[gene_column_name] - name of gene column to subset
 	[gene_list_1] ... [gene_list_n] - space separated list of gene lists
 
-    svtkMatch [svtk_input] [svtk_output] [output]
-	[svtk_input] - input file to svtk bedcluster
-	[svtk_output] - output file of svtk bedcluster
-	[output] - output file
-
     transposeTSV [input] [output]
 	transpose a tsv file
 	[input]
