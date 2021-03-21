@@ -58,7 +58,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.22";
+	public static final String VERSION = "2.25";
 
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
@@ -66,7 +66,7 @@ public class gCNV_helper {
 	}
 
 	public static void main(String[] args) throws IOException, InterruptedException {
-		
+
 		gCNV_helper g = new gCNV_helper(args);
 		System.out.println(g.toString());
 		System.out.println("version " + VERSION);
@@ -79,29 +79,29 @@ public class gCNV_helper {
 		start();
 		g.run(args);
 		stop();
-		
+
 	}
-	
-	
+
+
 	public static void writeGenesForTesting(String gtf, String output) throws FileNotFoundException {
 		var genes = parseGTFFile(gtf);
 		Collections.sort(genes);
 		for(int i = 0; i < genes.size(); i++) {
 			Gene gene = genes.get(i);
-			
+
 			for(int k = 0; k < gene.nexons; k++) {
 				System.out.println(
 						gene.chr + "\t" + 
-						gene.starts.get(k) + "\t" + 
-						gene.ends.get(k) + "\t" + 
-						gene.name + "\t" + 
-						gene.name + "_exon_" + k);
-				
+								gene.starts.get(k) + "\t" + 
+								gene.ends.get(k) + "\t" + 
+								gene.name + "\t" + 
+								gene.name + "_exon_" + k);
+
 			}
 		}
 	}
-	
-	
+
+
 	/**
 	 * apply quality filters, does not count X/Y chroms
 	 * @param input
@@ -110,12 +110,12 @@ public class gCNV_helper {
 	 */
 	public void filter(String input, String output) throws IOException {
 		DataFrame gcnv = new DataFrame(input, true, "\\t", "@");	
-		
+
 		boolean[] passQS = new boolean[gcnv.nrow()];
 		boolean[] passFREQ = new boolean[gcnv.nrow()];
 		boolean[] lt100rawCalls = new boolean[gcnv.nrow()];
 		boolean[] lt10highQSRareCalls = new boolean[gcnv.nrow()];
-		
+
 		HashMap<String, Integer> sampleToNRawCalls = new HashMap<>();
 		for(int i = 0; i < gcnv.nrow(); i++) {
 			String currSample = gcnv.get("sample", i);
@@ -127,17 +127,17 @@ public class gCNV_helper {
 				sampleToNRawCalls.put(currSample,
 						1 + sampleToNRawCalls.get(currSample));	
 			}
-			
+
 		}
-		
+
 		for(int i = 0; i < gcnv.nrow(); i++) {
 			passQS[i] = (gcnv.get("svtype", i).equals("DUP") && Integer.parseInt(gcnv.get("QS", i)) >= 50) | 
-						(gcnv.get("svtype", i).equals("DEL") && Integer.parseInt(gcnv.get("QS", i)) >= 100) | 
-						(gcnv.get("CN", i).equals("0") && Integer.parseInt(gcnv.get("QS", i)) >= 400);
+					(gcnv.get("svtype", i).equals("DEL") && Integer.parseInt(gcnv.get("QS", i)) >= 100) | 
+					(gcnv.get("CN", i).equals("0") && Integer.parseInt(gcnv.get("QS", i)) >= 400);
 			passFREQ[i] = Double.parseDouble(gcnv.get("vaf", i)) <= 0.01;
 			lt100rawCalls[i] = sampleToNRawCalls.get(gcnv.get("sample", i)) <= 100;
 		}
-		
+
 		HashMap<String, Integer> sampleToNPseudoHQCalls = new HashMap<>();
 		for(int i = 0; i < gcnv.nrow(); i++) {
 			String currSample = gcnv.get("sample", i);
@@ -148,19 +148,19 @@ public class gCNV_helper {
 				sampleToNPseudoHQCalls.put( currSample,
 						1 + sampleToNPseudoHQCalls.get(currSample));	
 			}
-			
+
 		}
 		for(int i = 0; i < gcnv.nrow(); i++) {
 			lt10highQSRareCalls[i] = sampleToNPseudoHQCalls.get(gcnv.get("sample", i)) <= 10;
 		}
-		
+
 		ArrayList<String> PASS_HQ = new ArrayList<>();
 		ArrayList<String> PASS_FREQ = new ArrayList<>();
 		ArrayList<String> LT100_RAW_CALLS = new ArrayList<>();
 		ArrayList<String> LT10_HIGH_QS_RARE_CALLS = new ArrayList<>();
 		ArrayList<String> PASS_SAMPLE = new ArrayList<>();
 		ArrayList<String> HIGH_QUALITY = new ArrayList<>();
-		
+
 		for(int i = 0; i < gcnv.nrow(); i++) {
 			PASS_HQ.add(passQS[i] ? "TRUE" : "FALSE");
 			PASS_FREQ.add(passFREQ[i] ? "TRUE" : "FALSE");
@@ -169,29 +169,29 @@ public class gCNV_helper {
 			PASS_SAMPLE.add(lt100rawCalls[i] && lt10highQSRareCalls[i]? "TRUE" : "FALSE");
 			HIGH_QUALITY.add(passQS[i] && passFREQ[i] && lt100rawCalls[i] && lt10highQSRareCalls[i]? "TRUE" : "FALSE");
 		}
-		
+
 		ArrayList<String> columnNamesToAdd = new ArrayList<>();
 		ArrayList<ArrayList<String>> columnValuesToAdd = new ArrayList<>();
-		
+
 		columnNamesToAdd.add("lt100_raw_calls");
 		columnNamesToAdd.add("lt10_highQS_rare_calls");
 		columnNamesToAdd.add("PASS_SAMPLE");
 		columnNamesToAdd.add("PASS_FREQ");
 		columnNamesToAdd.add("PASS_QS");
 		columnNamesToAdd.add("HIGH_QUALITY");
-		
+
 		columnValuesToAdd.add(LT100_RAW_CALLS);
 		columnValuesToAdd.add(LT10_HIGH_QS_RARE_CALLS);
 		columnValuesToAdd.add(PASS_SAMPLE);
 		columnValuesToAdd.add(PASS_FREQ);
 		columnValuesToAdd.add(PASS_HQ);
 		columnValuesToAdd.add(HIGH_QUALITY);
-		
+
 		gcnv.addColumns(columnNamesToAdd, columnValuesToAdd);
 		gcnv.writeFile(output, true);
 
 	}
-	
+
 	public void getBEDtrack(String sourceFolder, String OUTPUT_PATH, String countsRegex) throws IOException, InterruptedException {
 		ArrayList<Path> barcodeCountsPaths = new ArrayList<>();
 		ArrayList<String> barcodeCountsFiles = new ArrayList<>();
@@ -249,10 +249,10 @@ public class gCNV_helper {
 		exServer.shutdown();
 		exServer.awaitTermination(6, TimeUnit.DAYS);
 
-//		ArrayList<String> countsArrayList = new ArrayList<>();
-//		for (int i = 0; i < doneReading2.size(); i++) {
-//			countsArrayList.add(doneReading2.get(i));
-//		}
+		//		ArrayList<String> countsArrayList = new ArrayList<>();
+		//		for (int i = 0; i < doneReading2.size(); i++) {
+		//			countsArrayList.add(doneReading2.get(i));
+		//		}
 
 		System.out.println("done reading files");
 
@@ -288,8 +288,8 @@ public class gCNV_helper {
 		header.append(sampleNames.get(sampleNames.size()-1));
 		header.append("\n");
 		output.write(header.toString());
-		
-		
+
+
 		for(int r = 0; r < chr.size(); r++) {
 			StringBuilder line = new StringBuilder();
 			line.append(chr.get(r));
@@ -306,14 +306,14 @@ public class gCNV_helper {
 			line.append("\n");
 			output.write(line.toString());
 		}
-		
+
 		output.close();
 	}
-	
+
 	public void transposeTSV(String INPUT, String OUTPUT) throws IOException {
 		ArrayList<String[]> rows = new ArrayList<>();
-		
-		
+
+
 		FileInputStream inputStream = new FileInputStream(INPUT);
 		Scanner sc = new Scanner(inputStream, "UTF-8");
 
@@ -325,13 +325,13 @@ public class gCNV_helper {
 		sc.close();
 		print("done reading");
 		stop();
-		
+
 		print("writing");
-		
+
 		BufferedWriter output = null;
 		File file = new File(OUTPUT);
 		output = new BufferedWriter(new FileWriter(file));
-		
+
 		int nrow = rows.get(0).length; 
 		int ncol = rows.size();
 		print("nrow: " + nrow);
@@ -347,8 +347,8 @@ public class gCNV_helper {
 			output.write(line.toString());
 		}
 		output.close();
-		
-		
+
+
 	}
 
 	public void addGnomadAnnotations(String GCNV_INPUT, String OUTPUT, String gencodeGTF, String geneColumnName) throws IOException {
@@ -357,21 +357,21 @@ public class gCNV_helper {
 		for(int i = 0; i < geneList.size(); i++) {
 			genes.put(geneList.get(i).name, geneList.get(i));
 		}
-		
+
 		print("readint callset");
 		DataFrame gcnv = new DataFrame(GCNV_INPUT, true, "\\t", "#");
-		
+
 		print("writing annotations");
 		ArrayList<String> annotationColumn = new ArrayList<>();
-		
+
 		for(int i = 0; i < gcnv.nrow(); i++) {
 			String[] currentGenes = gcnv.get(geneColumnName, i).split(",");
 			ArrayList<String> annotations = new ArrayList<>();
-			
+
 			int gStart = Integer.parseInt(gcnv.get("start", i));
 			int gEnd = Integer.parseInt(gcnv.get("end", i));
 			String gSvtype = gcnv.get("svtype", i);
-			
+
 			for(String gene : currentGenes) {
 				if(gene.equals("None")) {
 					annotations.add("None");
@@ -379,15 +379,15 @@ public class gCNV_helper {
 					annotations.add(genes.get(gene).getGnomadSchemeAnnotation(gStart, gEnd, gSvtype));	
 				}
 			}
-			
+
 			annotationColumn.add(String.join(",", annotations));
 		}
-		
-		
+
+
 		gcnv.addColumn(geneColumnName + "_gnomAD_annotation", annotationColumn);
 		gcnv.writeFile(OUTPUT, true);
 	}
-	
+
 	public void convertToEnsemble(String GCNV_INPUT, String OUTPUT, String geneColumnName, String gencodeGTF) throws IOException {
 		print("reading annotation file");
 
@@ -430,7 +430,7 @@ public class gCNV_helper {
 		gcnv.addColumn(geneColumnName + "_Ensemble_ID", ensembleIDcolummn);
 		gcnv.writeFile(OUTPUT, true);
 	}
-	
+
 
 	public void convertToGeneID(String GCNV_INPUT, String OUTPUT, String ensembleColumnName, String gencodeGTF) throws IOException {
 		print("reading annotation file");
@@ -454,13 +454,13 @@ public class gCNV_helper {
 			Matcher ensembleMatcher = ensemblePattern.matcher(line);
 			String ensemble = ensembleMatcher.find() ? ensembleMatcher.group() : "-1";
 
-//			nameToEnsembleID.put(geneName, ensemble);
+			//			nameToEnsembleID.put(geneName, ensemble);
 			ensembleIDToGene.put(ensemble, geneName);
 
 		}
 		gtf.close();
 
-//		nameToEnsembleID.put("None", "None");
+		//		nameToEnsembleID.put("None", "None");
 		ensembleIDToGene.put("None", "None");
 
 		DataFrame gcnv = new DataFrame(GCNV_INPUT, true, "\\t", "#");
@@ -756,7 +756,7 @@ public class gCNV_helper {
 		gcnv.columnMapping.put("chr", 0);
 		gcnv.columnMapping.remove("#chrom");
 		gcnv.sort();
-		
+
 		print("reading filtered intervals");
 		//Read filtered intervals, column 1 is name of cluster, column 2 is file
 		DataFrame filteredIntervalsManifest = new DataFrame(filtered_intervals, true, "\\t", "#");
@@ -771,7 +771,7 @@ public class gCNV_helper {
 		}
 		print("done");
 		stop();
-		
+
 		// get batch indexes
 		HashMap<String, ArrayList<Integer>> batchToIndexes = new HashMap<>(); 
 		for(int i = 0; i < gcnv.nrow(); i++) {
@@ -779,40 +779,40 @@ public class gCNV_helper {
 			if(passQS == false) {
 				continue;
 			}
-			
+
 			if(!batchToIndexes.containsKey(gcnv.get("batch", i))) {
 				batchToIndexes.put(gcnv.get("batch", i), new ArrayList<>());
 			}
 			batchToIndexes.get(gcnv.get("batch", i)).add(i);
 		}
-		
+
 		// check to make sure each 
 		for(String batch : batchToIndexes.keySet()) {
 			if(!batchToFilteredIntervalDF.containsKey(batch)) {
 				print("Warning! " + batch + " does not have a filtered interval");
 			}
 		}
-		
+
 		ArrayList<Integer> allIndexesDefragged = new ArrayList<>();
 		DataFrame allDefragmentedCalls = new DataFrame(gcnv.fieldNames);
-		
+
 		//bin == intervals, 
 		for(String batch : batchToIndexes.keySet()) {
 			print(batch);
 			DataFrame currBin = batchToFilteredIntervalDF.get(batch);
-			
-//			ArrayList<Integer> extendedBinStarts = new ArrayList<>();
-//			ArrayList<Integer> extendedBinEnds = new ArrayList<>();
-			
+
+			//			ArrayList<Integer> extendedBinStarts = new ArrayList<>();
+			//			ArrayList<Integer> extendedBinEnds = new ArrayList<>();
+
 			HashMap<Integer, Integer> gcnvIndexToExtendedBinStartCoords = new HashMap<>();
 			HashMap<Integer, Integer> gcnvIndexToExtendedBinEndCoords = new HashMap<>();
-			
+
 			//convert to intervals coordinates
 			HashMap<String, Integer> gCNVtoStartBin = new HashMap<>();
 			HashMap<String, Integer> gCNVtoEndBin = new HashMap<>();
 			HashMap<String, ArrayList<Integer>> binChrToStarts = new HashMap<>();
 			HashMap<String, ArrayList<Integer>> binChrToEnds = new HashMap<>();
-			
+
 			// read the interval/bin file, storing chr-start and chr-end pairings, sort ascending
 			for(int i = 0; i < currBin.nrow(); i++) {
 				String currChr = currBin.get(i, CHR);
@@ -825,18 +825,18 @@ public class gCNV_helper {
 				binChrToStarts.get(currChr).add(Integer.parseInt(currStart));
 				binChrToEnds.get(currChr).add(Integer.parseInt(currEnd));
 			}
-			
+
 			for(String chr : binChrToStarts.keySet()) {
 				Collections.sort(binChrToStarts.get(chr));
 				Collections.sort(binChrToEnds.get(chr));
 			}
-			
+
 			// convert each gcnv start/end to bin start/end by finding closest value less than/greater than, then extend
 			for(Integer i : batchToIndexes.get(batch)) {
 				String currChr = gcnv.get("chr", i);
 				Integer currEnd = Integer.parseInt(gcnv.get("end", i));
 				Integer currStart = Integer.parseInt(gcnv.get("start", i));
-				
+
 				String currKeyEnd = currChr + "_" + currEnd;
 				if(!gCNVtoEndBin.containsKey(currKeyEnd)) {
 					int rawIndex = Collections.binarySearch(binChrToEnds.get(currChr), currEnd);
@@ -852,17 +852,17 @@ public class gCNV_helper {
 					Integer closestBinStart = binChrToStarts.get(currChr).get(index);
 					gCNVtoStartBin.put(currKeyStart, closestBinStart);
 				} 
-				
+
 				//width and extension calculation
 				double width = gCNVtoEndBin.get(currKeyEnd) - gCNVtoStartBin.get(currKeyStart) + 1;
-//				extendedBinStarts.add((int)(gCNVtoStartBin.get(currKeyStart) - (width * EXTENSION_VALUE)));
-//				extendedBinEnds.add((int) (gCNVtoEndBin.get(currKeyEnd) + (width * EXTENSION_VALUE)));
-				
+				//				extendedBinStarts.add((int)(gCNVtoStartBin.get(currKeyStart) - (width * EXTENSION_VALUE)));
+				//				extendedBinEnds.add((int) (gCNVtoEndBin.get(currKeyEnd) + (width * EXTENSION_VALUE)));
+
 				gcnvIndexToExtendedBinStartCoords.put(i, (int)(gCNVtoStartBin.get(currKeyStart) - (width * EXTENSION_VALUE)));
 				gcnvIndexToExtendedBinEndCoords.put(i, (int) (gCNVtoEndBin.get(currKeyEnd) + (width * EXTENSION_VALUE)));
-				
+
 			}
-			
+
 			// for each unique sample, get map of sample to indexes
 			HashMap<String, ArrayList<Integer>> sampleToIndexes = new HashMap<>();
 			for(Integer i : batchToIndexes.get(batch)) {
@@ -872,10 +872,10 @@ public class gCNV_helper {
 				}
 				sampleToIndexes.get(currSample).add(i);
 			}
-			
+
 			DataFrame batchDefragmentedCalls = new DataFrame(gcnv.fieldNames);
 			HashSet<Integer> batchIndexesDefragmented = new HashSet<>();
-			
+
 
 			// Light help you, the below code of Shai'tan's own
 			// main defragmentation code - currently not super worried about runtime
@@ -891,24 +891,24 @@ public class gCNV_helper {
 					currentFragment.add(x);
 
 					// keep track of largest/current fragment end
-//					int currentFragmentEnd = extendedBinEnds.get(x);
+					//					int currentFragmentEnd = extendedBinEnds.get(x);
 					int currentFragmentEnd = gcnvIndexToExtendedBinEndCoords.get(x);
 					int k = ++i; // lookahead amount for current cnv fragment
 					while (k < sampleToIndexes.get(currentSample).size()) {
 						int y = sampleToIndexes.get(currentSample).get(k);
 						// check for overlap
 						if (gcnv.get("chr", x).equals(gcnv.get("chr", y)) && gcnv.get("CN", x).equals(gcnv.get("CN", y))
-//								&& currentFragmentEnd >= extendedBinStarts.get(y)
+								//								&& currentFragmentEnd >= extendedBinStarts.get(y)
 								&& currentFragmentEnd >= gcnvIndexToExtendedBinStartCoords.get(y)
 								&& Integer.parseInt(gcnv.get("start", x)) <= Integer.parseInt(gcnv.get("end", y))) {
 
 							currentFragment.add(y);
-//							currentFragmentEnd = Math.max(currentFragmentEnd, extendedBinEnds.get(y));
+							//							currentFragmentEnd = Math.max(currentFragmentEnd, extendedBinEnds.get(y));
 							currentFragmentEnd = Math.max(currentFragmentEnd, gcnvIndexToExtendedBinEndCoords.get(y));
 							batchIndexesDefragmented.add(y);
 							k++;
 						} else {
-//							System.out.println("nope!");
+							//							System.out.println("nope!");
 							break;
 						}
 					}
@@ -951,10 +951,10 @@ public class gCNV_helper {
 			} else {
 				allDefragmentedCalls.rbind(batchDefragmentedCalls);
 			}
-			
+
 		}
-		
-		
+
+
 		Collections.sort(allIndexesDefragged, Collections.reverseOrder());
 		for (int i = 0; i < allIndexesDefragged.size(); i++) {
 			gcnv.df.remove((int) (allIndexesDefragged.get(i)));
@@ -975,9 +975,9 @@ public class gCNV_helper {
 		gcnv.rbind(allDefragmentedCalls);
 		gcnv.sort();
 		gcnv.writeFile(output, true);
-		
+
 	}
-	
+
 	/**
 	 * 
 	 * @param match_output
@@ -992,9 +992,9 @@ public class gCNV_helper {
 		gcnv.columnMapping.put("chr", 0);
 		gcnv.columnMapping.remove("#chrom");
 		gcnv.sort();
-		
-		
-		
+
+
+
 		// extend coordinates
 		ArrayList<Integer> extendedStarts = new ArrayList<>();
 		ArrayList<Integer> extendedEnds = new ArrayList<>();
@@ -1056,18 +1056,18 @@ public class gCNV_helper {
 				int k = ++i;
 				while (k < sampleToIndexes.get(currentSample).size()) {
 					int y = sampleToIndexes.get(currentSample).get(k);
-//					System.out.println("comparing " + x + " vs " + y + " " + currentFragmentEnd + " > " + extendedStarts.get(y) + " = " + (currentFragmentEnd>extendedStarts.get(y)));
+					//					System.out.println("comparing " + x + " vs " + y + " " + currentFragmentEnd + " > " + extendedStarts.get(y) + " = " + (currentFragmentEnd>extendedStarts.get(y)));
 					if (gcnv.get("chr", x).equals(gcnv.get("chr", y)) && gcnv.get("CN", x).equals(gcnv.get("CN", y))
 							&& currentFragmentEnd >= extendedStarts.get(y)
 							&& Integer.parseInt(gcnv.get("start", x)) <= Integer.parseInt(gcnv.get("end", y))) {
 
-//						System.out.println("overlap!");
+						//						System.out.println("overlap!");
 						currentFragment.add(y);
 						currentFragmentEnd = Math.max(currentFragmentEnd, extendedEnds.get(y));
 						indexesDefragmented.add(y);
 						k++;
 					} else {
-//						System.out.println("nope!");
+						//						System.out.println("nope!");
 						break;
 					}
 				}
@@ -1259,7 +1259,7 @@ public class gCNV_helper {
 			sc = null;
 			sc = new Scanner(inputStream, "UTF-8");
 		}
-		
+
 		while (sc.hasNextLine()) {
 			line = sc.nextLine();
 			String[] linee = line.split("\\t");
@@ -1696,7 +1696,7 @@ public class gCNV_helper {
 			String currField = gcnv.get(fieldColumn, i); // current field looked at
 			if (!perFieldMap.containsKey(currField)) { // if the field value has not been observed yet
 				perFieldMap.put(currField, new HashMap<>()); // add the field observation and a new hashmap to the main
-																// hashmap
+				// hashmap
 				for (String field : columnsToMeasure) { // populate that value's hashmap with empty arraylists
 					perFieldMap.get(currField).put(field, new ArrayList<>());
 				}
@@ -1778,7 +1778,7 @@ public class gCNV_helper {
 	public String toString() {
 		return String.join(" ", initializationArgs) + "\n" + date;
 	}
-	
+
 	/**
 	 * currently, I am hard-coding things, but in the future I can make the maps
 	 * dynamically
@@ -1866,8 +1866,8 @@ public class gCNV_helper {
 			Matcher batchMatcher = batchPattern.matcher(svtkOutput.get("call_name", i));
 			batch_newField.add(batchMatcher.find() ? batchMatcher.group() : "NA");
 		}
-		
-		
+
+
 		ArrayList<String> columnNames = new ArrayList<>();
 		columnNames.add("CN");
 		columnNames.add("GT");
@@ -1895,30 +1895,30 @@ public class gCNV_helper {
 		svtkOutput.addColumns(columnNames, columnValues);
 		svtkOutput.writeFile(match_output, true);
 	}
-	
-	
-	
+
+
+
 	public static int BinarySearchUpperBound(ArrayList<Integer> list, int value, int start, int end) {
 		int low = Math.max(0, start);
 		int high = end==-1 ? list.size()-1 : Math.min(list.size()-1, end);
-		
+
 		int ol = low;
 		int oh = high;
-		
+
 		while (low <= high) {
 			int mid = (low + high) >>> 1;
-			int midVal = list.get(mid);
-			int cmp = Integer.compare(midVal, value);
-			if (cmp < 0)
-				low = mid + 1;
-			else if (cmp > 0)
-				high = mid - 1;
-			else {
-				while(mid<oh && list.get(mid) <= value) {
-					mid++;
-				}
-				return mid;
+		int midVal = list.get(mid);
+		int cmp = Integer.compare(midVal, value);
+		if (cmp < 0)
+			low = mid + 1;
+		else if (cmp > 0)
+			high = mid - 1;
+		else {
+			while(mid<oh && list.get(mid) <= value) {
+				mid++;
 			}
+			return mid;
+		}
 		}
 		int mid = Math.min(Math.max(ol, low), oh);
 		while(mid<oh && list.get(mid) <= value) {
@@ -1926,28 +1926,28 @@ public class gCNV_helper {
 		}
 		return mid;
 	}
-	
+
 	public static int BinarySearchLowerBound(ArrayList<Integer> list, int value, int start, int end) {
 		int low = Math.max(0, start);
 		int high = end==-1 ? list.size()-1 : Math.min(list.size()-1, end);
-		
+
 		int ol = low;
 		int oh = high;
-		
+
 		while (low <= high) {
 			int mid = (low + high) >>> 1;
-			int midVal = list.get(mid);
-			int cmp = Integer.compare(midVal, value);
-			if (cmp < 0)
-				low = mid + 1;
-			else if (cmp > 0)
-				high = mid - 1;
-			else {
-				while(mid>0 && list.get(mid) >= value) {
-					mid--;
-				}
-				return mid;
+		int midVal = list.get(mid);
+		int cmp = Integer.compare(midVal, value);
+		if (cmp < 0)
+			low = mid + 1;
+		else if (cmp > 0)
+			high = mid - 1;
+		else {
+			while(mid>0 && list.get(mid) >= value) {
+				mid--;
 			}
+			return mid;
+		}
 		}
 		int mid = Math.min(Math.max(ol, low), oh);
 		if(value >= list.get(oh)) {
@@ -1958,85 +1958,118 @@ public class gCNV_helper {
 		}
 		return mid;
 	}
-	
+
 	public static boolean reciprocalOverlap(int s1, int e1, int s2, int e2, double percent) {
 		double nOverlapx100 = Math.max(0, Math.min(e1, e2) - Math.max(s1, s2) + 1);
 		double width1 = e1 - s1;
 		double width2 = e2 - s2;
 		return ((nOverlapx100 / width1 >= percent) && (nOverlapx100 / width2 >= percent));
 	}
-	
-	public void addIndexToCluster(HashMap<String, HashSet<Integer>> C2I, String CC, HashMap<Integer, TreeSet<Integer>> I2I, int CI, HashSet<Integer> indexesClustered, HashMap<Integer, String> indexToCluster, HashMap<String, String> clusterToClusterLink) {
-		
+
+	/**
+	 * 
+	 * @param C2I - modified
+	 * @param CC
+	 * @param I2I
+	 * @param CI
+	 * @param indexesClustered - modified
+	 * @param indexToCluster - modified
+	 * @param clusterToClusterLink - modified
+	 */
+	public void addIndexToCluster(HashMap<String, HashSet<Integer>> C2I, String CC, HashMap<Integer, TreeSet<Integer>> I2I, int CI, HashSet<Integer> indexesClustered, HashMap<Integer, String> indexToCluster, HashMap<String, String> clusterToClusterLink, HashMap<String, TreeSet<Integer>> observedOverlaps, HashMap<Integer, ArrayList<String>> indexToObservedOverlapsForI2I ) {
+
 		PriorityQueue<Integer> toClusterQueue = new PriorityQueue<Integer>();
 		HashSet<Integer> indexesQueued = new HashSet<>();
 		HashSet<Integer> currentIndexesClustered = new HashSet<>();
-		
+
 		toClusterQueue.add(CI);
-		
+
 		while(toClusterQueue.size() != 0) {
 			int currentIndex = toClusterQueue.poll();
-			
+
+
+			TreeSet<Integer> I2IChildren = new TreeSet<>();
 			for(Integer child : I2I.get(currentIndex)) {
-				
+				I2IChildren.add(child);
+			}
+
+
+			if(indexToObservedOverlapsForI2I.containsKey(currentIndex)) {
+				for(String observedOverlap : indexToObservedOverlapsForI2I.get(currentIndex) ) {
+					I2IChildren.addAll(observedOverlaps.get(observedOverlap));
+				}	
+			}
+
+
+			for(Integer child : I2IChildren) {
+
+				// check if any child indexes have already been assigned a different cluster
 				if(indexToCluster.containsKey(child) && (indexToCluster.get(child).equals(CC) == false) && clusterToClusterLink.containsKey(CC)==false) {
 					String correctCC = indexToCluster.get(child);
-//					print("correction!: " + CC + " -> " + correctCC);
+					//					print("correction!: " + CC + " -> " + correctCC);
 					clusterToClusterLink.put(CC, correctCC);
 				}
-				
+
 				if(indexesClustered.contains(child)==false && indexesQueued.contains(child)==false && currentIndexesClustered.contains(child)==false) {
 					toClusterQueue.add(child);
 					indexesQueued.add(child);
 				}
 			}
-			
+
+
+
 			indexToCluster.put(currentIndex, CC);
 			C2I.get(CC).add(currentIndex);
 			currentIndexesClustered.add(currentIndex);
-			
+
 		}
-		
+
 		indexesClustered.addAll(currentIndexesClustered);
-		
+
 	}
 
-	/**
-	 * work in progress, you probably should not use this
-	 * designed as a faster copy of  svtk bedcluster
-	 * 
-	 * 
-	 * @throws IOException
-	 * @throws InterruptedException
-	 */
 	public void bedcluster(String input, String output_file, String prefixString, boolean writeIndexFile, String indexFilePath) throws IOException, InterruptedException {
-		
+
+		//read in bed file
 		DataFrame df = new DataFrame(input, true, "\\t", "@");
 		df.columnMapping.put("chr", 0);
 		df.fieldNames[0] = "chr";
+
+		//sort bed file
 		df.sort();
+
+		// set overlap percent threshold
 		double PERCENT_OVERLAP = 0.8;
 		String variantName = "variant_name";
 		boolean writeIndexMap = writeIndexFile;
-		
+
+		// create a map of CHR to line number of first observation
 		HashMap<String, Integer> chrToFirstIndex = new HashMap<>();
+
+		// create a map of CHR to line number of last observation
 		HashMap<String, Integer> chrToLastIndex = new HashMap<>();
+
+		// arraylist of integer starts and ends by line number (index)
 		ArrayList<Integer> starts = new ArrayList<>();
 		ArrayList<Integer> ends = new ArrayList<>();
+
+		// populate starts, ends, chrToFirstIndex, chrToLastIndex
 		for(int i = 0; i < df.nrow(); i++) {
 			chrToLastIndex.put(df.get("chr", i), i);
 			if (!chrToFirstIndex.containsKey(df.get("chr", i))) {
 				chrToFirstIndex.put(df.get("chr", i), i);
 			}
-			
+
 			starts.add(Integer.parseInt(df.get("start", i)));
 			ends.add(Integer.parseInt(df.get("end", i)));
 		}
 
 		// map of end coordinate to last instance, could do the same for starts?
 		HashMap<String, ArrayList<Integer>> chrToSortedEnds = new HashMap<>();
+
+		// map of chr to map of end to first index, when the DF is sorted, some END coordinates appear multiple times, this maps the first line number that each end appears at
 		HashMap<String, HashMap<Integer, Integer>> chrToEndToFirstIndex = new HashMap<>();
-		
+
 		for(String chr : chrToFirstIndex.keySet()) {
 			HashMap<Integer, Integer> endToFirstIndex = new HashMap<>();
 			int chrStart = chrToFirstIndex.get(chr);
@@ -2051,60 +2084,72 @@ public class gCNV_helper {
 			chrToSortedEnds.put(chr, rawEnds);
 			chrToEndToFirstIndex.put(chr, endToFirstIndex);
 		}
-		
+
+		// keep track of which indexes have been checked
 		HashSet<Integer> checkedIndexes = new HashSet<>();
+
+		// map of which indexes link to which other indexes
 		HashMap<Integer, TreeSet<Integer>> indexToIndexes = new HashMap<>();
-		
+		HashMap<Integer, ArrayList<String>> indexToObservedOverlapsForI2I = new HashMap<>();
+
+		// map of which START/END coordinates have been observed so that searching only needs to be done once
 		HashMap<String, Integer> visitedStarts = new HashMap<>();
 		HashMap<String, Integer> visitedEnds = new HashMap<>();
-		
+
+		// map of which intervals are already known to intersect with a given interval
 		HashMap<String, TreeSet<Integer>> observedOverlaps = new HashMap<>();
+
+		// keep track of which CHR is currently being iterated over
 		HashSet<String> newChrReset = new HashSet<>();
-		
+
+		// keep track of which indexes have already been clustered
 		HashSet<Integer> indexesClustered = new HashSet<>();
+
+		// map of cluster name to indexes
 		HashMap<String, HashSet<Integer>> clusterToIndexes = new HashMap<>();
-		
+
 		String prefix = prefixString;
 		int counter = 0;
 		String currentCluster = prefix + counter;
-		
+
 		BufferedWriter output = null;
 		if(writeIndexMap) {
 			File file = new File(indexFilePath);
 			output = new BufferedWriter(new FileWriter(file));			
 		}
-		
+
+		// link clusters together if they have an overlapping interval
 		HashMap<String, String> clusterToClusterLink = new HashMap<>();
 		HashMap<Integer, String> indexToCluster = new HashMap<>();
-		
+
 		for(int i = 0; i < df.nrow(); i++) {
 			int currStart = starts.get(i);
 			int currEnd = ends.get(i);
 			String currChr = df.get("chr", i);
 			String currType = df.get("svtype", i);
-			
+
 			newChrReset.add(currChr);
 			if(newChrReset.size() > 1) {
-				
-				
+				System.out.print(currChr);
+
 				newChrReset = new HashSet<>();
 				visitedStarts.clear();
-				visitedStarts.clear();
-				observedOverlaps.clear();
-				
+				visitedEnds.clear();
+
+
 				ArrayList<Integer> indexKeys = new ArrayList<>();
 				indexKeys.addAll(indexToIndexes.keySet());
 				Collections.sort(indexKeys);
-				
+
 				for(Integer k : indexKeys){
 					if(!indexesClustered.contains(k)) {
 						clusterToIndexes.put(currentCluster, new HashSet<>());
-						addIndexToCluster(clusterToIndexes, currentCluster, indexToIndexes, k, indexesClustered, indexToCluster, clusterToClusterLink);
+						addIndexToCluster(clusterToIndexes, currentCluster, indexToIndexes, k, indexesClustered, indexToCluster, clusterToClusterLink, observedOverlaps, indexToObservedOverlapsForI2I);
 						counter++;
 						currentCluster = prefix + counter;
 					}
 				}
-				
+
 				if(writeIndexMap) {
 					ArrayList<Integer> temp = new ArrayList<>();
 					temp.addAll(indexToIndexes.keySet());
@@ -2114,13 +2159,15 @@ public class gCNV_helper {
 					}					
 				}
 
+				indexToObservedOverlapsForI2I.clear();
+				observedOverlaps.clear();
 				indexToIndexes.clear();
 				indexToCluster.clear();
 			}
 
 			indexToIndexes.put(i, new TreeSet<>());
 			checkedIndexes.add(i);
-			
+
 			String startKey = currChr + "_" + currStart;
 			int indexS;
 			if(visitedStarts.containsKey(startKey)) {
@@ -2131,7 +2178,7 @@ public class gCNV_helper {
 				indexS = chrToEndToFirstIndex.get(currChr).get(targetEnd);
 				visitedStarts.put(startKey, indexS);
 			}
-			
+
 			String endKey = currChr + "_" + currEnd;
 			int indexE;
 			if(visitedEnds.containsKey(endKey)) {
@@ -2142,7 +2189,7 @@ public class gCNV_helper {
 				indexE = BinarySearchUpperBound(starts, currEnd, chrStart, chrEnd);
 				visitedEnds.put(endKey, indexE);
 			}
-			
+
 			String intervalKey = currChr +  "_" + currStart + "_" + currEnd + "_" + currType;
 			if(!observedOverlaps.containsKey(intervalKey)) {
 				for(int n = indexS; n <= indexE; n++) {
@@ -2152,31 +2199,39 @@ public class gCNV_helper {
 				}
 				observedOverlaps.put(intervalKey, new TreeSet<>());
 				observedOverlaps.get(intervalKey).addAll(indexToIndexes.get(i));
-				
+
 			} else {
 				observedOverlaps.get(intervalKey).remove(Integer.valueOf(i));
-				indexToIndexes.get(i).addAll(observedOverlaps.get(intervalKey));
+				//				indexToIndexes.get(i).addAll(observedOverlaps.get(intervalKey));
+				if(indexToObservedOverlapsForI2I.containsKey(i)) {
+					indexToObservedOverlapsForI2I.get(i).add(intervalKey);
+				} else {
+					indexToObservedOverlapsForI2I.put(i, new ArrayList<>());
+					indexToObservedOverlapsForI2I.get(i).add(intervalKey);
+				}
 			}
 
 		}
-		
+
 		visitedStarts.clear();
-		visitedStarts.clear();
-		observedOverlaps.clear();
+		visitedEnds.clear();
+
 		ArrayList<Integer> indexKeys = new ArrayList<>();
 		indexKeys.addAll(indexToIndexes.keySet());
 		Collections.sort(indexKeys);
 		for(Integer k : indexKeys){
 			if(!indexesClustered.contains(k)) {
 				clusterToIndexes.put(currentCluster, new HashSet<>());
-				addIndexToCluster(clusterToIndexes, currentCluster, indexToIndexes, k, indexesClustered, indexToCluster, clusterToClusterLink);
+				addIndexToCluster(clusterToIndexes, currentCluster, indexToIndexes, k, indexesClustered, indexToCluster, clusterToClusterLink, observedOverlaps, indexToObservedOverlapsForI2I);
 				counter++;
 				currentCluster = prefix + counter;
-				
+
 			}
-			
+
 		}
-		
+		observedOverlaps.clear();
+		indexToObservedOverlapsForI2I.clear();
+
 		if(writeIndexMap) {
 			ArrayList<Integer> temp = new ArrayList<>();
 			temp.addAll(indexToIndexes.keySet());
@@ -2187,14 +2242,14 @@ public class gCNV_helper {
 			output.close();			
 		}
 		indexToIndexes.clear();
-		
+
 
 		//post-process
-		
+
 		ArrayList<String> cluster_labels = new ArrayList<>();
 		ArrayList<String> newStarts = new ArrayList<>();
 		ArrayList<String> newEnds = new ArrayList<>();
-		
+
 		ArrayList<String> ID = new ArrayList<>();
 		for(int i = 0; i < df.nrow(); i++) {
 			cluster_labels.add("Error");
@@ -2207,7 +2262,7 @@ public class gCNV_helper {
 			while(clusterToClusterLink.containsKey(mainClusterName)) {
 				mainClusterName = clusterToClusterLink.get(mainClusterName);
 			}
-			
+
 			for(int i : clusterToIndexes.get(clusterName)) {
 				cluster_labels.set(i, mainClusterName);
 			}
@@ -2215,39 +2270,39 @@ public class gCNV_helper {
 
 		ArrayList<String> columnNamesToAdd = new ArrayList<>();
 		ArrayList<ArrayList<String>> columnValuesToAdd = new ArrayList<>();
-		
+
 		columnNamesToAdd.add(variantName);
 		columnNamesToAdd.add("ID");
-		
+
 		columnValuesToAdd.add(cluster_labels);
 		columnValuesToAdd.add(ID);
 		df.addColumns(columnNamesToAdd, columnValuesToAdd);
-		
+
 		// post process
 		// merge the same variant within sample
 		HashMap<String, HashMap<String, ArrayList<Integer>>> sampleToVariantToIndexes = new HashMap<>();
 		for(int i = 0; i < df.size(); i++) {
-			
+
 			String sample = df.get("sample", i);
 			if(!sampleToVariantToIndexes.containsKey(sample)) {
 				sampleToVariantToIndexes.put(sample, new HashMap<>());
 			}
-			
+
 			String variant = df.get(variantName, i);
 			if(!sampleToVariantToIndexes.get(sample).containsKey(variant)){
 				sampleToVariantToIndexes.get(sample).put(variant, new ArrayList<>());
 			}
-			
+
 			sampleToVariantToIndexes.get(sample).get(variant).add(i);
 		}
-		
-		
+
+
 		//it looks like a lot of nested loops, however there will only be i iterations total
 		HashSet<Integer> rowsToDelete = new HashSet<>();
 		ArrayList<String[]> rowsToAdd = new ArrayList<>();
 		for(String sample : sampleToVariantToIndexes.keySet()) {
 			for(String variant : sampleToVariantToIndexes.get(sample).keySet()) {
-				
+
 				if(sampleToVariantToIndexes.get(sample).get(variant).size() != 1) {
 					int minStart = Integer.MAX_VALUE;
 					int maxEnd = Integer.MIN_VALUE;
@@ -2258,7 +2313,7 @@ public class gCNV_helper {
 					String[] mergedRow = df.get(sampleToVariantToIndexes.get(sample).get(variant).get(0)).clone();
 					mergedRow[df.columnMapping.get("start")] = Integer.toString(minStart);
 					mergedRow[df.columnMapping.get("end")] = Integer.toString(maxEnd);
-					
+
 					rowsToAdd.add(mergedRow);
 					rowsToDelete.addAll( sampleToVariantToIndexes.get(sample).get(variant));
 				}
@@ -2274,56 +2329,56 @@ public class gCNV_helper {
 		for(String[] newRow : rowsToAdd) {
 			df.df.add(newRow);
 		}
-		
-		
-//		//calculate rmsstd, convert to median coordinates for start and end
-//		// should probably make this a method
-//		DecimalFormat format = new DecimalFormat("#.####");
-//		HashMap<String, String> variantToRmsstd = new HashMap<>();
-//		HashMap<String, ArrayList<Integer>> variantToIndexes = new HashMap<>();
-//		HashMap<String, String> variantToMedianStartCoordinate = new HashMap<>();
-//		HashMap<String, String> variantToMedianEndCoordinate = new HashMap<>();
-//		for(int i = 0; i < df.size(); i++) {
-//			String variant = df.get(variantName, i);
-//			if(!variantToIndexes.containsKey(variant)) {
-//				variantToIndexes.put(variant, new ArrayList<>());
-//			}
-//			variantToIndexes.get(variant).add(i);
-//		}
-//		for(String variant : variantToIndexes.keySet()) {
-//			int n = variantToIndexes.get(variant).size();
-//			double[] vstarts = new double[n];
-//			double[] vends = new double[n];
-//			for(int i = 0; i < n; i++) {
-//				vstarts[i] = Double.parseDouble(df.get("start", variantToIndexes.get(variant).get(i)));
-//				vends[i] = Double.parseDouble(df.get("end", variantToIndexes.get(variant).get(i)));
-//			}
-//			variantToMedianStartCoordinate.put(variant, median(vstarts));
-//			variantToMedianEndCoordinate.put(variant, median(vends));
-//			variantToRmsstd.put(variant, format.format((rmsstd(vstarts, vends))));
-//		}
-//		ArrayList<String> rmsstd = new ArrayList<>();
-//		ArrayList<String> medStarts = new ArrayList<>();
-//		ArrayList<String> medEnds = new ArrayList<>();
-//		for(int i = 0; i < df.size(); i++) {
-//			rmsstd.add(variantToRmsstd.get(df.get(variantName, i)));
-//			medStarts.add(variantToMedianStartCoordinate.get(df.get(variantName, i)));
-//			medEnds.add(variantToMedianEndCoordinate.get(df.get(variantName, i)));
-//		}
-//
-//		columnNamesToAdd = new ArrayList<>();
-//		columnValuesToAdd = new ArrayList<>();
-//		
-//		columnNamesToAdd.add("rmsstd");
-//		columnNamesToAdd.add("medStart");
-//		columnNamesToAdd.add("medEnd");
-//		
-//		columnValuesToAdd.add(rmsstd);
-//		columnValuesToAdd.add(medStarts);
-//		columnValuesToAdd.add(medEnds);
-//		
-//		df.addColumns(columnNamesToAdd, columnValuesToAdd);
-		
+
+
+		//		//calculate rmsstd, convert to median coordinates for start and end
+		//		// should probably make this a method
+		//		DecimalFormat format = new DecimalFormat("#.####");
+		//		HashMap<String, String> variantToRmsstd = new HashMap<>();
+		//		HashMap<String, ArrayList<Integer>> variantToIndexes = new HashMap<>();
+		//		HashMap<String, String> variantToMedianStartCoordinate = new HashMap<>();
+		//		HashMap<String, String> variantToMedianEndCoordinate = new HashMap<>();
+		//		for(int i = 0; i < df.size(); i++) {
+		//			String variant = df.get(variantName, i);
+		//			if(!variantToIndexes.containsKey(variant)) {
+		//				variantToIndexes.put(variant, new ArrayList<>());
+		//			}
+		//			variantToIndexes.get(variant).add(i);
+		//		}
+		//		for(String variant : variantToIndexes.keySet()) {
+		//			int n = variantToIndexes.get(variant).size();
+		//			double[] vstarts = new double[n];
+		//			double[] vends = new double[n];
+		//			for(int i = 0; i < n; i++) {
+		//				vstarts[i] = Double.parseDouble(df.get("start", variantToIndexes.get(variant).get(i)));
+		//				vends[i] = Double.parseDouble(df.get("end", variantToIndexes.get(variant).get(i)));
+		//			}
+		//			variantToMedianStartCoordinate.put(variant, median(vstarts));
+		//			variantToMedianEndCoordinate.put(variant, median(vends));
+		//			variantToRmsstd.put(variant, format.format((rmsstd(vstarts, vends))));
+		//		}
+		//		ArrayList<String> rmsstd = new ArrayList<>();
+		//		ArrayList<String> medStarts = new ArrayList<>();
+		//		ArrayList<String> medEnds = new ArrayList<>();
+		//		for(int i = 0; i < df.size(); i++) {
+		//			rmsstd.add(variantToRmsstd.get(df.get(variantName, i)));
+		//			medStarts.add(variantToMedianStartCoordinate.get(df.get(variantName, i)));
+		//			medEnds.add(variantToMedianEndCoordinate.get(df.get(variantName, i)));
+		//		}
+		//
+		//		columnNamesToAdd = new ArrayList<>();
+		//		columnValuesToAdd = new ArrayList<>();
+		//		
+		//		columnNamesToAdd.add("rmsstd");
+		//		columnNamesToAdd.add("medStart");
+		//		columnNamesToAdd.add("medEnd");
+		//		
+		//		columnValuesToAdd.add(rmsstd);
+		//		columnValuesToAdd.add(medStarts);
+		//		columnValuesToAdd.add(medEnds);
+		//		
+		//		df.addColumns(columnNamesToAdd, columnValuesToAdd);
+
 
 		//calculate rmsstd
 		DecimalFormat format = new DecimalFormat("#.####");
@@ -2350,14 +2405,14 @@ public class gCNV_helper {
 		for(int i = 0; i < df.size(); i++) {
 			rmsstd.add(variantToRmsstd.get(df.get(variantName, i)));
 		}
-		
+
 		df.addColumn("rmsstd", rmsstd);
-		
-		
+
+
 		df.writeFile(output_file, true);
-		
+
 	}
-	
+
 	public void convertCoordinatesToVariantMedianValues(String variantName, String input, String output) throws IOException {
 		DataFrame df = new DataFrame(input, true, "\\t", "@");
 
@@ -2391,15 +2446,15 @@ public class gCNV_helper {
 
 		int s = df.columnMapping.get("start");
 		int e = df.columnMapping.get("end");
-		
+
 		for(int i = 0; i < df.nrow(); i++) {
 			df.df.get(i)[s] = medStarts.get(i);
 			df.df.get(i)[e] = medEnds.get(i);
 		}
-		
+
 		df.writeFile(output, true);
 	}
-	
+
 	/**
 	 * returns the int median of a double array, for reasons
 	 * @param i
@@ -2407,19 +2462,19 @@ public class gCNV_helper {
 	 */
 	public String median(double[] i) {
 		Arrays.sort(i);
-//		return Integer.toString((int)(i[i.length/2]));
+		//		return Integer.toString((int)(i[i.length/2]));
 		return Integer.toString((int)(
 				i.length%2!=0 ? 
 						i[i.length/2] : 
-						(i[(i.length-1)/2] + i[i.length/2])/2.0 + 0.5
+							(i[(i.length-1)/2] + i[i.length/2])/2.0 + 0.5
 				));
 	}
-	
+
 	public double rmsstd(double[] starts, double[] ends) {
 		double SS = meanSS(starts) + meanSS(ends);
 		return Math.sqrt(SS);
 	}
-	
+
 	public double mean(double[] x) {
 		double sum = 0;
 		for(double d : x) {
@@ -2427,29 +2482,29 @@ public class gCNV_helper {
 		}
 		return sum/x.length;
 	}
-	
+
 	public double meanSS(double[] x) {
 		double mu = mean(x);
-		
+
 		double sumSS = 0;
 		for(double d : x) {
 			sumSS += Math.pow((d - mu), 2);
 		}
-		
+
 		return sumSS/x.length;
 	}
 
-	
+
 	public void calculateFrequency(String input, String variantColumn, String output) throws IOException {
 
 		DataFrame df = new DataFrame(input, true, "\\t", "@");
-//		df.columnMapping.put("chr", 0);
-//		df.fieldNames[0] = "chr";
+		//		df.columnMapping.put("chr", 0);
+		//		df.fieldNames[0] = "chr";
 		df.sort();
-		
+
 		HashMap<String, Double> variantToCount = new HashMap<>();
 		HashSet<String> samples = new HashSet<>();
-		
+
 		for(int i = 0; i < df.size(); i++) {
 			String variant = df.get(variantColumn, i);
 			if(!variantToCount.containsKey(variant)) {
@@ -2458,16 +2513,16 @@ public class gCNV_helper {
 			variantToCount.put(variant, variantToCount.get(variant)+1);
 			samples.add(df.get("sample", i));
 		}
-		
+
 		double nSamples = samples.size();
 		//DecimalFormat format = new DecimalFormat("#.####");
-		
+
 		HashMap<String, String> variantToVAF = new HashMap<>();
 		for(String variant : variantToCount.keySet()) {
 			//variantToVAF.put(variant, format.format(variantToCount.get(variant)/nSamples));
 			variantToVAF.put(variant, Double.toString(variantToCount.get(variant)/nSamples));
 		}
-		
+
 		ArrayList<String> vaf = new ArrayList<>();
 		ArrayList<String> vac = new ArrayList<>();
 		for(int i = 0; i < df.size(); i++) {
@@ -2475,21 +2530,21 @@ public class gCNV_helper {
 			vaf.add(variantToVAF.get(variant));
 			vac.add(Double.toString(variantToCount.get(variant)));
 		}
-		
-		
+
+
 		ArrayList<String> columnNamesToAdd = new ArrayList<>();
 		ArrayList<ArrayList<String>> columnValuesToAdd = new ArrayList<>();
-		
+
 		columnNamesToAdd.add("vaf");
 		columnNamesToAdd.add("vac");
-		
+
 		columnValuesToAdd.add(vaf);
 		columnValuesToAdd.add(vac);
 		df.addColumns(columnNamesToAdd, columnValuesToAdd);
 		df.writeFile(output, true);
 	}
-	
-	
+
+
 
 	/**
 	 * 
@@ -2545,7 +2600,7 @@ public class gCNV_helper {
 			// create an array list of to store the new column names, eg "GT, CN, NP, QA"
 			// etc
 			String[] newColumns = VCFsArrayList.get(0).get("FORMAT", 0).split(":"); // an array list of the new field
-																					// names, eg 'GT', 'CN', etc
+			// names, eg 'GT', 'CN', etc
 			ArrayList<String> newColumnNames = new ArrayList<>();
 			for (int j = 0; j < newColumns.length; j++) {
 				newColumnNames.add(newColumns[j]);
@@ -3186,7 +3241,7 @@ public class gCNV_helper {
 			String[] dosCommand = { "bash", "-c", "'cat", filesFile, "|", "gsutil", "-m", "cp", "-I",
 					pathToDownloadToUnix + "/", "'" };
 			command = dosCommand;
-			
+
 			System.out.println(String.join(" ", command));
 
 			try {
@@ -3199,7 +3254,7 @@ public class gCNV_helper {
 					"WARNING: this download functionality has not been tested on macOS/linux, please report any issues");
 			String[] unixCommand = {"/bin/sh", "-c", "cat " + filesFile + " | gsutil -m cp -I " +  pathToDownloadToUnix + "/" };
 			command = unixCommand;
-			
+
 			System.out.println(String.join(" ", command));
 
 			try {
@@ -3207,9 +3262,9 @@ public class gCNV_helper {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-	    
+
 		}
-		
+
 	}
 
 	/**
@@ -3370,7 +3425,7 @@ public class gCNV_helper {
 		}
 		sc.close();
 	}
-	
+
 	public void printOptionsShort() {
 		System.out.println("java -jar gCNV_helper.jar [Command] [required argument(s)] ");
 		System.out.println();
@@ -3584,15 +3639,15 @@ public class gCNV_helper {
 			}
 			this.validateSubsetAnnotations(gtfFile, annotationSubsets);
 		}
-        default -> {
-            System.out.println("unknown command: " + toolName);
-        }
-		
+		default -> {
+			System.out.println("unknown command: " + toolName);
 		}
-		
-		
+
+		}
+
+
 	}
-	
+
 
 
 }
