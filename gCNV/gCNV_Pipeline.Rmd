@@ -2,33 +2,29 @@
 title: "gCNV pre and post processing"
 output: html_document
 author: Isaac Wong
-version: 2.22
+version: 2.25
 ---
 
+https://github.com/theisaacwong/talkowski/tree/master/gCNV
 
-
-To begin, load the required packages and some functions
+To begin, load the required packages and some functions from my github
 ```{r}
-source("C:/Users/iwong/OneDrive/R/my_libraries.R")
+source("my_libraries.R")
 ```
 
-This workflow is an attempt to provide instructions on running gCNV. Please let me know of any isses you run into or any processes you want improved/automated. Please ensure you have downloaded the most recent files from my github: https://github.com/theisaacwong/talkowski/tree/master/gCNV. You should be able to run the pipeline chunk by chunk.
 
-# Step 1
-run gatk CollectReadCounts on each sample using the `aux_capture_uniques_hg38_chr_sorted` and `gencode_v33_split_800` intervals
-```{}
-        gatk --java-options "-Xmx${command_mem_mb}m" CollectReadCounts \
-            -I ${cram} \
-            --read-index ${crai} \
-            -L ${intervals_barcode} \
-            --interval-merging-rule OVERLAPPING_ONLY \
-            --reference ${hg38_reference} \
-            --format TSV \
-            -O ${counts_barcode_filename}
+#Step 1
+```{r}
+wd <- "/path/to/folder/"
+jar_path <- "/path/to/jar"
+system2("java", sprintf("-Xmx16G -jar %s --help", jar_path)) # you might need to change -Xmx to how much memory you have available on your device
 ```
+
 
 
 #Step 2
+Run GATK CollectReadCounts on your samples. WDL link is below
+https://github.com/theisaacwong/talkowski/tree/master/gCNV/WDL
 Download the barcode counts files to the wd. If the column name in your manifest file isn't "counts_barcode" then change code. This chunk just makes a system call to run the jar, which itself makes a system call to gsutil to download the files. It's turtles all the way down. 
 ```{r}
 wd <- "/path/to/folder/"
@@ -49,190 +45,92 @@ system2("java", sprintf("-Xmx16G -jar %s getCountsMatrix %s %scounts_matrix.tsv 
 - save the R PCA object
 a scree plot for the PCA loadings is generated to help visualize the data. 
 ```{r}
-wd <- ""
-counts_df <- read.table(paste0(wd, "counts_matrix.tsv"), sep="\t", stringsAsFactors = FALSE, header=TRUE, fill=TRUE)
-
-counts_df[is.na(counts_df)] <- 0
-counts_matrix <- t(as.matrix(counts_df))
-indexes_to_remove <- rep(FALSE, nrow(counts_matrix))
-rown <- rownames(counts_matrix)
-chr <- do.call(rbind, str_split(rown, "_"))[,1]
-bool_y <- chr == "X" | chr == "chrX" | chr == "ChrX"
-bool_x <- chr == "Y" | chr == "chrY" | chr == "ChrY"
-indexes_to_remove[bool_y | bool_x] <- TRUE
-mydata_filtered <- counts_matrix[!indexes_to_remove,]
-mydataNormalized <- t(t(mydata_filtered)/colSums(mydata_filtered, na.rm = TRUE))
-
-pca <- prcomp(t(mydataNormalized), rank = 5)
-fviz_eig(pca)
-plot3d(pca$x[,c(1,2,3)])
-save(pca, file=paste0(wd, "pca.rda"))
-x <- pca$x
-save(x, file=paste0(wd, "x.rda"))
+wd <- "/path/to/working/directory/"
+counts_matrix_file_name <- "counts_matrix.tsv"
+pca <- getCountsPCA(paste0(wd, counts_matrix_file_name)) 
+save(pca, file=paste0(wd, "PCA_loadings.rda"))
 ```
 
-
+# Step 5 
+- create clusters 
 ```{r}
-open3d()
-rgl.bg(color = "grey") 
-#plot3d(pca$x[,1:3], col=colors)
-plot3d(x2[,1:3], col=colors)
-if (!rgl.useNULL())
-  play3d(spin3d(axis = c(1, 1, 1), rpm = 4), duration = 30, )
-```
-
-
-#Step 5
-- Pseudo-automate clustering. 
-This step looks at 30 different hierarchical clustering methods and chooses an "optimal" clustering assignment. You will probably want to fiddle with `n_clusters` to a number between 25-40. `USE_METRICS` attempts to use unsupervised clustering heuristics to choose the best clustering method. However, I've found the choosing the clustering method with the smallest, largest cluster size is usually best. For example, if clustering method A has clusters of size (1000, 900, 800, 700, 100) and method B had (750, 700, 700, 700, 650), method B is best. The results of this are stored in the `ct` object. heuristics approach is stored in `rval` object
-```{r}
-n_clusters <- 25 
-USE_METRICS <- FALSE
-
-wd <- ""
-load(paste0(wd, "x.rda"))
-load(paste0(wd, "pca.rda"))
-
-set.seed(123)
-pca_loadings <- x
-
-hclust_methods <- c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid") 
-distance_methods <- c("euclidean", "maximum", "canberra", "minkowski")
-mink_p <- c(10)
-results <- expand.grid(hclust_methods, distance_methods)
-colnames(results) <- c("agglomeration", "distance")
-results$db <- 0
-results$silhouette <- 0
-results$dunn <- 0
-
-dist_eucl <- dist(pca_loadings[,1:3], method="euclidean") 
-dist_maxi <- dist(pca_loadings[,1:3], method="maximum") 
-dist_canb <- dist(pca_loadings[,1:3], method="canberra") 
-dist_mink <- dist(pca_loadings[,1:3], method="minkowski", p=100)
-
-cuts <- vector("list", n_clusters)
-
-USE_METRICS <- FALSE
-
-for(i in 1:nrow(results)){
-  print(i)
-  dist_mat <- switch(results$distance[i] %>% as.character(), "euclidean"=dist_eucl, "maximum"=dist_maxi, "canberra"=dist_canb, "minkowski"=dist_mink)
-  hclust <- hclust(dist_mat, method=results$agglomeration[i]) 
-  cut_avg <- cutree(hclust, k=n_clusters)
-  temp_names_srt <- names(srt(cut_avg))
-  cuts[[i]] <- sapply(unname(cut_avg), function(x) which(x == temp_names_srt))
-  
-  if(USE_METRICS){
-    results$db[i] <- index.DB(pca_loadings[,1:3], cut_avg, centrotypes="centroids", p=3)$DB
-    results$silhouette[i] <- mean(silhouette(cut_avg, dist_mat)[,3])
-    results$dunn[i] <- dunn(dist_mat, cut_avg)    
-  }
-}
-
-if(USE_METRICS){
-  results <- results[order(results$silhouette, decreasing = TRUE),]
-  rval <- results
-  rval$db <- order(results$db, decreasing = FALSE)
-  rval$dunn <- order(results$dunn, decreasing = TRUE)
-  rval$silhouette <- order(results$silhouette, decreasing = TRUE)
-  rval$sum <- rval$db + rval$dunn + rval$silhouette
-  rval <- rval[order(rval$sum),]
-  write.table(rval , paste0(wd, "clustering_metrics", n_clusters, ".tsv"), sep="\t", quote = FALSE, col.names = TRUE, row.names = FALSE)
-}
-
-ct <- as.data.frame(do.call(rbind, lapply(cuts, table)))
-ct <- ct[order(ct[,1]), ]
+n_clusters <- 30 # 30 is optimal for a cohort size of ~20,000 samples
+cluster_results <- clusterPrimaryClusters(pca$x, n_clusters=n_clusters, wd = wd)
+print(cluster_results$cluster_counts)
 ```
 
 #Step 6
-Plot the clustering output.
+Plot the clustering output. Change the 'choice' variable from 1 to 24 to cycle through the different clustering methods. (lower is "better")
 ```{r}
-n <- n_clusters
-automated_choice <- rownames(ct)[1] %>% as.integer()
-choice <- automated_choice # change this to a different number if you don't like the automaticly generated output
-sorted_clusters <- cuts[[choice]]
-cols <- rainbow(n)[sample(1:n, n)]
-plot3d(x2[,1:3], col=cols[sorted_clusters])
+choice <- 1
+sorted_clusters <- cluster_results$cluster_labels[[choice]]
+cols <- rainbow(n_clusters)[sample(1:n_clusters, n_clusters)]
+plot3d(pca$x[,1:3], col=cols[sorted_clusters])
 ```
+
 
 merge the small clusters to their nearest neighbor
 ```{r}
-set.seed(123)
-threshold <- 200 # merge clusters smaller than this size
-cluster_centers <- do.call(rbind, lapply(1:n_clusters, function(i){
-  message(i)
-  if(length(x[sorted_clusters==i, ]) == 7){
-    return(x[sorted_clusters==i, ])    
-  } else {
-    colMeans(x[sorted_clusters==i, ])  
-  }
-}) ) %>% as.data.frame()
-
-tab <- table(sorted_clusters)
-which_clusters_to_relabel <- which(tab < threshold) %>% unname
-clusters_to_relabel <- x[sorted_clusters %in% which_clusters_to_relabel, ]
-bool_cluster_relabel <- sorted_clusters %in% which_clusters_to_relabel
-main_cluster_centers <- cluster_centers[-c(which_clusters_to_relabel),]
-
-
-nearest_clusters <- lapply(1:nrow(x), function(i){
-  if(!bool_cluster_relabel[i]){ 
-    return(sorted_clusters[i])
-  } else {
-    dists <- as.matrix(dist(rbind(x[i, ], main_cluster_centers)))[1, -1]
-    return(as.numeric(names(dists)[which(dists==min(dists))][1])-1)
-  }
-}) %>% unlist %>% as.numeric()
-
-l1 <- length(unique(nearest_clusters))
-cols <- rainbow(l1)[sample(1:l1, l1)]
-plot3d(x[,1:3], col=cols[nearest_clusters])
-
-
-cohort_size <- 200
-memb <- do.call(rbind, lapply(sort(unique(nearest_clusters)), function(i){
-  if(length(which(sorted_clusters==i)) <= cohort_size){
-    df <- data.frame(membership.sample_set_id=paste0("cluster_super_", i, "_COHORT"), 
-                     samples = row.names(pca$x)[which(nearest_clusters==i)])
-    return(df)
-  } else {
-    cohort_subset_indexes <- base::sample(which(sorted_clusters==i), cohort_size, replace = FALSE)
-    nearest_points_in_cluster_indexes <- which(nearest_clusters==i)
-    case_subset_indexes <- base::setdiff(nearest_points_in_cluster_indexes, cohort_subset_indexes)
-    
-    cohort_label <- paste0("cluster_super_", i, "_COHORT")
-    case_label <- paste0("cluster_super_", i, "_CASE")
-    
-    cohort_samples <- row.names(pca$x)[cohort_subset_indexes]
-    case_samples <- row.names(pca$x)[case_subset_indexes]
-    
-    df <- data.frame(membership.sample_set_id=c(
-      rep(cohort_label, length(cohort_samples)), 
-      rep(case_label, length(case_samples)) ), 
-      samples=c(
-        cohort_samples,
-        case_samples),
-      stringsAsFactors = FALSE)
-    return(df)
-  }
-}) )
-write.table(memb, paste0(wd, "membership_sfari.tsv"), sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+membership <- relabelSmallClusters(pca = pca, n_clusters = n_clusters, sorted_clusters = sorted_clusters)
+write.table(membership$membership_file, "/path/to/write/membership_file/", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
 ```
 
 ```{r}
-cols <- wes_palette("Darjeeling1")
-cols <- rainbow(n)[sample(1:n, n)]
+cols <- rainbow(n_clusters)[sample(1:n_clusters, n_clusters)]
 open3d()
-rgl.bg(color = "white") 
-plot3d(x[,1:3], col=cols[nearest_clusters])
+rgl.bg(color = "grey") 
+plot3d(pca$x[,1:3], col=cols[membership$merged_clusters])
 if (!rgl.useNULL())
-  play3d(spin3d(axis = c(1, 1, 1), rpm = 4), duration = 30, )
+  play3d(spin3d(axis = c(1, -1, 1), rpm = 4), duration = 60, )
 ```
 
-# cluster on sex chromosome
-currently, gCNV doesn't handle X and Y ploidy very well. The recomended approach is to sub cluster each super cluster from above into male and female sub clusters manually based on read depth at X/Y chromosomes
+
+2/1/2021 - develop tools to cluster new samples to old clusters
 ```{r}
-files <- list.files(wd, pattern=".exons.counts.tsv", full.names = TRUE, recursive = TRUE)
+ssm <- read.table("C:/Users/iwong/Documents/MGH/ukbb/09_remainders/sample_set_membership.tsv", sep="\t", header=TRUE)
+old_membership <- read.table("C:/Users/iwong/Documents/MGH/ukbb/09_remainders/ukbb_cluster_memb.tsv", sep="\t", header=TRUE, stringsAsFactors = FALSE)
+pca <- read.table("C:/Users/iwong/Documents/MGH/ukbb/09_remainders/ukbb.200k.pca.1.tsv", sep="\t", header=TRUE)
+
+old_membership$cluster <- old_membership$membership.sample_set_id %>% str_extract_all("(A|B)_\\d*") %>% unlist
+
+sampleToCluster <- HashMap$new()
+sampleToCluster$populate(old_membership, 2, 3)
+clusterToPCAIndexes <- HashMap$new()
+for(i in seq_down(pca)){
+  currentSample <- row.names(pca)[i]
+  
+  if(sampleToCluster$containsKey(currentSample)){
+    clusterToPCAIndexes$append(sampleToCluster$get(currentSample), i)  
+  }
+}
+
+cluster_centers <- do.call(rbind, lapply(old_membership$cluster %>% unique, function(x){
+  message(x)
+    colMeans(pca[clusterToPCAIndexes$get(x), ])  
+}) ) %>% as.data.frame()
+row.names(cluster_centers) <- old_membership$cluster %>% unique
+
+bool_samples_to_merge <- !(row.names(pca) %in% old_membership$sample)
+samplesToMerge <- row.names(pca)[bool_samples_to_merge]
+sampleToPCAIndex <- HashMap$new()
+for(i in seq_down(pca)){
+  sampleToPCAIndex$put(row.names(pca)[i], i)
+}
+nearest_clusters <- lapply(samplesToMerge, function(x){
+  dists <- rbind(pca[sampleToPCAIndex$get(x) ,], cluster_centers) %>% dist() %>% as.matrix() 
+  top_row <- dists[1, -1] %>% sort %>% names
+  closest_cluster <- top_row[1]
+  return(closest_cluster)
+})  
+names(nearest_clusters) <- samplesToMerge
+nearest_clusters %>% unlist %>% table
+
+memb <- data.frame(`membership:sample_set_id`=paste0("cluster_additional_" , unlist(nearest_clusters), "_CASE" ), sample=samplesToMerge, check.names = FALSE, stringsAsFactors = FALSE)
+write.table(memb, "C:/Users/iwong/Documents/MGH/ukbb/09_remainders/memb_ukbb_new.tsv", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+
+
+
+files <- list.files("C:/Users/iwong/Documents/MGH/ukbb/09_remainders/abtch_new_01/batch_new_01/", pattern=".exons.counts.tsv", full.names = TRUE, recursive = TRUE)
 
 cluster <- makeCluster(detectCores()-1)
 clusterExport(cl=cluster, varlist=c("files", "str_replace_all"))
@@ -241,6 +139,7 @@ counts_dfs <- parLapply(cluster, files, function(x){
         str_replace_all(basename(x), ".exons.counts.tsv", ""))
 })
 stopCluster(cluster)
+
 
 names(counts_dfs) <- str_replace_all(basename(files), ".exons.counts.tsv", "")
 
@@ -257,253 +156,132 @@ merged_counts <- do.call(rbind, total_counts)
 merged_counts$x <- merged_counts$xcount / median(merged_counts$xcount)
 merged_counts$y <- merged_counts$ycount / median(merged_counts$ycount)
 
-memb <- read.table(paste0(wd, "membership_sfari.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE)
-memb <- memb[str_detect(memb$membership.sample_set_id, "cluster_super_.*[COHORT_CASE]"), ]
+merged_counts$sex <- ifelse(merged_counts$y >= 5, "Y", "X")
 
-merged_counts$membership <- sapply(merged_counts$sample, function(x){
-  unique(memb$membership.sample_set_id[grepl(x, memb$sample)])[1]
-})
-merged_counts$super_cluster <- merged_counts$membership %>% str_replace_all("_(COHORT|CASE)", "") %>% str_replace_all("_super", "")
-
-ggplot(merged_counts, aes(x=x, y=y, color=super_cluster)) + 
+ggplot(merged_counts, aes(x=x, y=y, color=sex)) + 
   geom_point() + 
   xlab("normalized chrX counts") + 
   ylab("normalized chrY counts") + 
   ggtitle("normalized chrX and chrY counts, epi")
-```
 
-make sure to manually check each graph produced here to make sure clusters are well assigned
-```{r}
-set.seed(4)
+merged_counts$additional_sex_cluster <- lapply(seq_down(merged_counts), function(x) {
+  add_clust <- memb$`membership:sample_set_id`[memb$sample == merged_counts$sample[x]]
+  return(add_clust %>% str_replace_all("CASE", paste0(merged_counts$sex[x], "_CASE")) %>% unlist)
+}) %>% unlist
 
-n_super_clusters <- merged_counts$super_cluster %>% unique %>% length
-super_clusters <- merged_counts$super_cluster %>% unique
-merged_counts$sex_cluster <- "-1"
-merged_counts$sex_cluster_sub <- "-1"
-
-# TODO change to lapply?
-for(i in 1:n_super_clusters){
-  n_sub_cluster <- 2
-  current_super_cluster <- merged_counts[merged_counts$super_cluster == super_clusters[i],]
-
-  gclust <- GMM(current_super_cluster[, c("x", "y")], n_sub_cluster, km_iter = 10, em_iter=50)
-  pr <- predict_GMM(current_super_cluster[, c("x", "y")], gclust$centroids, gclust$covariance_matrices, gclust$weights)
- # plot(current_super_cluster[, c("x", "y")], col=c("RED","BLUE")[pr$cluster_labels+1], pch=20, main=super_clusters[i])
-  labels <- c("A", "B")[1 + pr$cluster_labels]
-  sex_labels <- labels
-  
-  # this is quite bad rn, B, C denote quality
-  x_mean_A <- mean(current_super_cluster$x[labels=="A"])
-  x_mean_B <- mean(current_super_cluster$x[labels=="B"])
-  y_mean_A <- mean(current_super_cluster$y[labels=="A"])
-  y_mean_B <- mean(current_super_cluster$y[labels=="B"])
-  if(x_mean_A < x_mean_B & y_mean_A > y_mean_B){
-    sex_labels[sex_labels=="A"] <- "Y"
-    sex_labels[sex_labels=="B"] <- "X"
-  } else if(x_mean_A > x_mean_B & y_mean_A < y_mean_B) {
-    sex_labels[sex_labels=="A"] <- "X"
-    sex_labels[sex_labels=="B"] <- "Y"
-  } else if(y_mean_A > y_mean_B){
-    sex_labels[sex_labels=="A"] <- "YB"
-    sex_labels[sex_labels=="B"] <- "XB"
-  } else if(y_mean_A < y_mean_B) {
-    sex_labels[sex_labels=="A"] <- "XB"
-    sex_labels[sex_labels=="B"] <- "YB"
-  } else if(x_mean_A < x_mean_B){
-    sex_labels[sex_labels=="A"] <- "YC"
-    sex_labels[sex_labels=="B"] <- "XC"
-  } else if(x_mean_A > x_mean_B) {
-    sex_labels[sex_labels=="A"] <- "XC"
-    sex_labels[sex_labels=="B"] <- "YC"
-  } 
-  sub_labels <- sex_labels
-  labels <- sub_labels
-  current_super_cluster$sub_labels <- sex_labels
-  print(
-    ggplot(current_super_cluster, aes(x=x, y=y, color=sub_labels)) + 
-    geom_point() + 
-    xlab("normalized chrX counts") + 
-    ylab("normalized chrY counts") + 
-    ggtitle(super_clusters[i]) 
-  )
-  
-  merged_counts$sex_cluster[merged_counts$super_cluster == super_clusters[i]] <- paste0(super_clusters[i], "_", labels) 
-  
-  for(k in unique(labels)){
-    if(length(which(labels==k)) <= 200){
-      sub_labels[which(labels==k)] <- paste0(sub_labels[which(labels==k)], "_COHORT")
-    } else {
-      cohort_subset_indexes <- base::sample(which(labels==k), 200, replace = FALSE)
-      case_subset_indexes <- base::setdiff(which(labels==k), cohort_subset_indexes)
-      
-      sub_labels[cohort_subset_indexes] <- paste0(sub_labels[cohort_subset_indexes], "_COHORT")
-      sub_labels[case_subset_indexes] <- paste0(sub_labels[case_subset_indexes], "_CASE")
-      
-    }
-  }
-  
-  merged_counts$sex_cluster_sub[merged_counts$super_cluster == super_clusters[i]] <- paste0(super_clusters[i], "_", sub_labels) 
-}
-```
-
-# if any of the clusters don't look good, redo the clustering below, editing the super_clusters_to_re_cluster character vecor
-```{r}
-set.seed(123)
-super_clusters_to_re_cluster <- c("cluster_24", "cluster_12")
-
-for(i in super_clusters_to_re_cluster){
-  current_super_cluster <- merged_counts[merged_counts$super_cluster == i,]
-  
-  dclust <- dbscan(current_super_cluster[, c("x", "y")], eps=0.1, minPts = 10); table(dclust$cluster); lab <- dclust$cluster + 1
-  n_clusters <- length(unique(lab))
-  x <- current_super_cluster[, c("x", "y")]
-  sorted_clusters <- sapply(unname(lab), function(x) which(x == names(srt(lab))))
-  cluster_centers <- do.call(rbind, lapply(1:n_clusters, function(i){
-    if(nrow(x[sorted_clusters==i, ]) == 1){
-      return(x[sorted_clusters==i, ])    
-    } else {
-      colMeans(x[sorted_clusters==i, ])  
-    }
-  }) ) %>% as.data.frame()
-  
-  tab <- table(sorted_clusters)
-  which_clusters_to_relabel <- sorted_clusters[!sorted_clusters %in% c(1,2)] %>% unique()
-  bool_cluster_relabel <- sorted_clusters %in% which_clusters_to_relabel
-  main_cluster_centers <- cluster_centers[-c(which_clusters_to_relabel),]
-  
-  nearest_clusters <- lapply(1:nrow(x), function(i){
-    if(!bool_cluster_relabel[i]){ 
-      return(sorted_clusters[i])
-    } else {
-      dists <- as.matrix(dist(rbind(x[i, ], main_cluster_centers)))[1, -1]
-      return(as.numeric(names(dists)[which(dists==min(dists))][1]))
-    }
-  }) %>% unlist %>% as.numeric()
-  
-  labels <- c("A", "B")[nearest_clusters]
-  sex_labels <- labels
-  
-  # this is quite bad rn, B, C denote quality
-  x_mean_A <- mean(current_super_cluster$x[labels=="A"])
-  x_mean_B <- mean(current_super_cluster$x[labels=="B"])
-  y_mean_A <- mean(current_super_cluster$y[labels=="A"])
-  y_mean_B <- mean(current_super_cluster$y[labels=="B"])
-  if(x_mean_A < x_mean_B & y_mean_A > y_mean_B){
-    sex_labels[sex_labels=="A"] <- "Y"
-    sex_labels[sex_labels=="B"] <- "X"
-  } else if(x_mean_A > x_mean_B & y_mean_A < y_mean_B) {
-    sex_labels[sex_labels=="A"] <- "X"
-    sex_labels[sex_labels=="B"] <- "Y"
-  } else if(y_mean_A > y_mean_B){
-    sex_labels[sex_labels=="A"] <- "YB"
-    sex_labels[sex_labels=="B"] <- "XB"
-  } else if(y_mean_A < y_mean_B) {
-    sex_labels[sex_labels=="A"] <- "XB"
-    sex_labels[sex_labels=="B"] <- "YB"
-  } else if(x_mean_A < x_mean_B){
-    sex_labels[sex_labels=="A"] <- "YC"
-    sex_labels[sex_labels=="B"] <- "XC"
-  } else if(x_mean_A > x_mean_B) {
-    sex_labels[sex_labels=="A"] <- "XC"
-    sex_labels[sex_labels=="B"] <- "YC"
-  } 
-  sub_labels <- sex_labels
-  labels <- sub_labels
-  current_super_cluster$sub_labels <- sex_labels
-  print(ggplot(current_super_cluster, aes(x=x, y=y, color=sub_labels)) + 
-  geom_point() + 
-  xlab("normalized chrX counts") + 
-  ylab("normalized chrY counts") + 
-  ggtitle(i) )
-  
-  merged_counts$sex_cluster[merged_counts$super_cluster == i] <- paste0(i, "_", labels) 
-  
-  for(k in unique(labels)){
-    if(length(which(labels==k)) <= 200){
-      sub_labels[which(labels==k)] <- paste0(sub_labels[which(labels==k)], "_COHORT")
-    } else {
-      cohort_subset_indexes <- base::sample(which(labels==k), 200, replace = FALSE)
-      case_subset_indexes <- base::setdiff(which(labels==k), cohort_subset_indexes)
-      
-      sub_labels[cohort_subset_indexes] <- paste0(sub_labels[cohort_subset_indexes], "_COHORT")
-      sub_labels[case_subset_indexes] <- paste0(sub_labels[case_subset_indexes], "_CASE")
-      
-    }
-  }
-  merged_counts$sex_cluster_sub[merged_counts$super_cluster == i] <- paste0(i, "_", sub_labels) 
-}
-```
+memb_sex <- data.frame(`membership:sample_set_id`= merged_counts$additional_sex_cluster, sample=merged_counts$sample, check.names = FALSE, stringsAsFactors = FALSE)
+write.table(memb_sex, "C:/Users/iwong/Documents/MGH/ukbb/09_remainders/memb_ukbb_new_sex.tsv", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
 
 
-# write table
-```{r}
-for(i in 1:n_super_clusters){
-  current_super_cluster <- merged_counts[merged_counts$super_cluster == super_clusters[i],]
-  print(ggplot(current_super_cluster, aes(x=x, y=y, color=sex_cluster)) + 
-  geom_point() + 
-  xlab("normalized chrX counts") + 
-  ylab("normalized chrY counts") + 
-  ggtitle(super_clusters[i]) )
-}
-memb <- data.frame(membership.sample_set_id=merged_counts$sex_cluster_sub, sample=merged_counts$sample)
-table(memb$membership.sample_set_id)
-write.table(memb, paste0(wd, "membership_plus_sex_cluster.tsv"), sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
-```
 
 
-update sample file and upload to terra
-```{r}
-wd <- ""
-sample <- read.table(paste0(wd, "sample.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE, na.strings = "weoifjoewif")
-sample$exons <- NULL
-ent <- read.table(paste0(wd, "sample_set_entity.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE, na.strings = "weoifweoif")
+
+## update sample file and upload
+wd <- "C:/Users/iwong/Documents/MGH/ukbb/09_remainders/sample_set_counts_all/"
+# sample <- read.table(paste0(wd, "sample.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE, na.strings = "weoifjoewif", check.names = FALSE)
+# sample$exons <- NULL
+ent <- read.table(paste0(wd, "sample_set_entity.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE, na.strings = "weoifweoif", check.names = FALSE)
   
-samples <- ent$sample_all %>% str_replace_all("\\[|\\]|\"", "") %>% str_split(",") %>% unlist %>% unique
 exons <- ent$counts_exons_all %>% str_replace_all("\\[|\\]|\"", "") %>% str_split(",") %>% unlist %>% unique
+samples <- exons %>% basename %>% str_replace_all(".exons.counts.tsv", "") %>% unlist
 
 samples <- samples[samples!=""]
 exons <- exons[exons!=""]
 
 temp1 <- sapply(1:length(exons), function(x) { grepl(samples[x], exons[x])}) %>% table # all good
 
-sample$exons[sample$entity.sample_id %in% samples] <- sapply(sample$entity.sample_id[sample$entity.sample_id %in% samples], function(x) {
+df_new <- data.frame(`entity:sample_id` = samples, 
+                     exons = exons,
+                     check.names=FALSE)
+
+write.table(df_new, paste0(wd, "sample_with_exons.tsv"), sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+
+sse <- read.table("C:/Users/iwong/Documents/MGH/ukbb/09_remainders/sample_set_file_configs/sse.tsv", sep="\t", header=TRUE, check.names = FALSE, fill=TRUE)
+sse$counts_exons_all <- NULL
+sse$`entity:sample_set_id` <- sse$`entity:sample_set_id` %>% str_replace_all("cluster", "cluster_additional") %>% unlist %>% str_replace_all("super_", "")
+
+bool1 <- sse$`entity:sample_set_id` %in% memb$`membership:sample_set_id`
+bool2 <- sse$`entity:sample_set_id` %in% memb_sex$`membership:sample_set_id`
+
+sse_new_new <- sse[bool1 | bool2, ]
+write.table(sse_new_new, "C:/Users/iwong/Documents/MGH/ukbb/09_remainders/sample_set_file_configs/sse_new_new.tsv", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+
+```
+
+
+
+
+# cluster on sex chromosome
+make sure generated plots look good before continueing to next step
+```{r}
+membership_sex <- clusterOnSex(wd = "/directory/of/counts/files/", membership_file = "/path/to/write/membership_file/")
+write.table(membership_sex, "/path/to/write/sex_membership_file/", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+```
+
+
+update sample file and upload all three files, this requires some ad hoc file massaging and you will probbaly need to adjust this template to suit your files
+```{r}
+wd <- ""
+sample <- read.table(paste0(wd, "sample.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE, na.strings = "weoifjoewif", check.names = FALSE)
+sample$exons <- NULL
+ent <- read.table(paste0(wd, "sample_set_entity.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE, na.strings = "weoifweoif", check.names = FALSE)
+  
+samples <- ent$sample %>% str_replace_all("\\[|\\]|\"", "") %>% str_split(",") %>% unlist %>% unique
+exons <- ent$counts_exons_full %>% str_replace_all("\\[|\\]|\"", "") %>% str_split(",") %>% unlist %>% unique
+
+samples <- samples[samples!=""]
+exons <- exons[exons!=""]
+
+temp1 <- sapply(1:length(exons), function(x) { grepl(samples[x], exons[x])}) %>% table # all good
+
+sample$exons[sample$`entity:sample_id` %in% samples] <- sapply(sample$`entity:sample_id`[sample$`entity:sample_id` %in% samples], function(x) {
   exons[samples==x]
 })
 
-temp1 <- lapply(sample$entity.sample_id[sample$entity.sample_id %in% samples], function(x) {
+temp1 <- lapply(sample$`entity:sample_id`[sample$`entity:sample_id` %in% samples], function(x) {
   exons[samples==x]
 })
 temp2 <- sapply(temp1, length)
 
-temp_samp <- sample$entity.sample_id[sample$entity.sample_id %in% samples]
-temp_exon <- sample$exons[sample$entity.sample_id %in% samples]
+temp_samp <- sample$`entity:sample_id`[sample$`entity:sample_id` %in% samples]
+temp_exon <- sample$exons[sample$`entity:sample_id` %in% samples]
 temp2 <- sapply(1:length(temp_samp), function(x) { grepl(temp_samp[x], temp_exon[x])}) %>% table # all good
 
-
-write.table(sample, paste0(wd, "sample_corrections.tsv"), sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+write.table(sample, paste0(wd, "sample_with_exons.tsv"), sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
 ```
 
-```{r}
-wd <- "C:/Users/iwong/Documents/MGH/epi/post_collectCoverage/"
-df <- read.table(paste0(wd, "sample_plus_new_exons.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE, na.strings = "woiefowiejfoiwejf")
-```
 
+
+
+https://portal.firecloud.org/?return=firecloud#methods/vruano-broad/GATK-gCNV-Cohort-Mode/7
+https://github.com/broadinstitute/gatk/tree/master/scripts/cnv_wdl/germline
 
 
 
 #Step 11
 After running cohort mode, you will need to upload certain reference files so that case mode can use the model built by cohort mode
 ```{r}
-wd <- ""
+makeFiles <- function(name, cohort, mat, gbucket){
+    output_name <- paste0(cohort, "-", name, ".txt")
+    colind <- which(colnames(mat)==name)
+    tmp <- mat[,colind]
+    tmp <- str_replace_all(tmp, '\"', "")
+    files <- unlist(str_split(str_replace_all(tmp, "(\\[)|]", ""), ","))
+    write.table(files, quote=FALSE, sep="\t", col.names=F, row.names=F, file=paste0(wd, output_name))
+    system2("gsutil", paste0("cp ", wd, output_name, " ", gbucket, output_name))
+    #file.remove(paste0("~/downloads/", output_name))
+}
+
+wd <- "C:/Users/iwong/MGH/"
 meta <- read.table(paste0(wd, "sample_set_entity.tsv"), sep="\t", header=TRUE, stringsAsFactors = FALSE)
 cohorts <- meta[,1][grepl("COHORT", meta[,1])]  # change to your cohort
 pse_case <- NULL
-gbucket = 'gs://fc-..../000_aux/' # change to your gbucket
+gbucket = 'gs://fc-.../000-models' # change to your gbucket
 for(i in 1:length(cohorts)){
     cohort <- cohorts[i]
     ind <- which(meta[,1] == cohort)
     case <- str_replace(cohort, "COHORT", "CASE")
-    if(case %in% meta[,1]){
+    #if(case %in% meta[,1]){
      if(TRUE){
         message(case)
         makeFiles("calling_configs", case, meta[ind,], gbucket)
@@ -512,19 +290,10 @@ for(i in 1:length(cohorts)){
         makeFiles("gcnv_model_tars", case, meta[ind,], gbucket)
         makeFiles("sharded_interval_lists", case, meta[ind,], gbucket)    
         pse_case <- rbind(pse_case, meta[ind,])
-    }}
+    }
 }
 
-makeFiles <- function(name, cohort, mat, gbucket){
-    output_name <- paste0(cohort, "-", name, ".txt")
-    colind <- which(colnames(mat)==name)
-    tmp <- mat[,colind]
-    tmp <- str_replace_all(tmp, '\"', "")
-    files <- unlist(str_split(str_replace_all(tmp, "(\\[)|]", ""), ","))
-    write.table(files, quote=FALSE, sep="\t", col.names=F, row.names=F, file=paste0("~/downloads/", output_name))
-    system2("gsutil", paste0("cp ~/downloads/", output_name, " ", gbucket, output_name))
-    #file.remove(paste0("~/downloads/", output_name))
-}
+
 
 ## Update the PARTICIPANT SET file
 pse_case <- pse_case[, which(colnames(pse_case) %in% c("entity.sample_set_id", "intervals", "filtered_intervals", "contig_ploidy_model_tar"))]
@@ -536,90 +305,37 @@ pse_case <- pse_case[, which(colnames(pse_case) %in% c("entity.sample_set_id", "
     pse_case$file_sharded_interval_lists <- paste0(gbucket, pse_case[,1], "-sharded_interval_lists.txt")        
         pse_case <- rbind(as.character(colnames(pse_case)), apply(pse_case, 2, as.character))
         pse_case[1,1] <- "entity:sample_set_id"
-        write.table(pse_case, sep="\t", row.names=F, col.names=F, file=paste0(wd, "/c_pse.txt"), quote=F)
+        write.table(pse_case, sep="\t", row.names=F, col.names=F, file=paste0(wd, "./c_pse.txt"), quote=F)
 ```
 
 
-
-#Step 12
-on Terra/Fireloud, run gCNV. 
-
-#Step 13
-
-Download the segment VCFs and unzip them. 
-```{r}
-wd <- "/path/to/folder/"
-system2("java", sprintf("-Xmx16G -jar %s downloadSegmentsVCFs %ssample_set_entity.tsv %s genotyped_segments_vcf", jar_path, wd, wd ))
-```
-
-#Step 14
-Convert VCFs to BED format
-```{r}
-system2("java", sprintf("-Xmx16G -jar %s convertVCFsToBEDFormat %sgcnv_vcftobed.bed genotyped-segments- .vcf", jar_path, wd, wd ))
-```
-
-
-#Step 15
-Cluster calls together. 
-```{r}
-system2("java", sprintf("-Xmx16G -jar %s bedcluster %sgcnv_vcftobed.bed %sgcnv_bedclusterd.bed", jar_path, wd, wd))
-```
-
-#Step 16
-defragment calls
-```{r}
-system2("java", sprintf("-Xmx16G -jar %s defragment %sgcnv_bedclusterd.bed %sgcnv_defragmented.bed", jar_path, wd, wd))
-```
-
-#Step 17
-calculate variant frequency
-```{r}
-system2("java", sprintf("-Xmx16G -jar %s calculateFrequency %sgcnv_defragmented.bed variant_name %sgcnv_frequency.bed", jar_path, wd, wd))
-```
-
-#Step 18
-apply filters
-```{r}
-system2("java", sprintf("-Xmx16G -jar %s filter %sgcnv_frequency.bed %gcnv_filtered.bed", jar_path, wd, wd))
-```
-
-#Step 19
-annotate with genes
-```{r}
-gencode_gtf <- "/path/to/gencode/gtf/file"
-system2("java", sprintf("-Xmx16G -jar %s annotateWithGenes any %s %gcnv_filtered.bed %gcnv_temp1.bed svtype", jar_path, gencode_gtf, wd, wd))
-system2("java", sprintf("-Xmx16G -jar %s countExons %gcnv_temp1.bed genes_any_overlap %s %sgcnv_temp2.bed", jar_path, wd, gencode_gtf, wd))
-system2("java", sprintf("-Xmx16G -jar %s annotateWithGenes strict %s %sgcnv_temp2.bed %sgcnv_temp3.bed svtype", jar_path, gencode_gtf, wd, wd))
-system2("java", sprintf("-Xmx16G -jar %s countExons %gcnv_temp3.bed genes_strict_overlap %s %sgcnv_annotated.bed", jar_path, wd, gencode_gtf, wd))
-```
-
-alternatively, use this:
-
-```{}
+# run this as an sh script
+```{sh}
 #!/bin/bash
 name=""
 gtf="/mgh/references/gencode.v34.annotation.gtf"
 java -jar /mgh/scripts/gCNV_helper.jar convertVCFsToBEDFormat ./ ${name}_vcftobed.bed genotyped-segments- .vcf
-java -jar /mgh/scripts/gCNV_helper.jar bedcluster ${name}_vcftobed.bed  ${name}_bedclustered.bed 
+java -jar /mgh/scripts/gCNV_helper.jar bedcluster ${name}_vcftobed.bed  ${name}_bedclustered.bed
 java -jar /mgh/scripts/gCNV_helper.jar defragment ${name}_bedclustered.bed ${name}_defragmented.bed
 java -jar /mgh/scripts/gCNV_helper.jar calculateFrequency ${name}_defragmented.bed variant_name ${name}_frequencied.bed
-java -jar /mgh/scripts/gCNV_helper.jar filter ${name}_frequencied.bed ${name}_filtered.bed
-java -jar /mgh/scripts/gCNV_helper.jar annotateWithGenes any ${gtf} ${name}_filtered.bed ${name}_intermediate1.bed svtype
-java -jar /mgh/scripts/gCNV_helper.jar countExons ${name}_intermediate1.bed genes_any_overlap ${gtf} ${name}_intermediate2.bed
-java -jar /mgh/scripts/gCNV_helper.jar annotateWithGenes strict ${gtf} ${name}_intermediate2.bed ${name}_intermediate3.bed svtype
-java -jar /mgh/scripts/gCNV_helper.jar countExons ${name}_intermediate3.bed genes_strict_overlap ${gtf} ${name}_annotated.bed
+java -Xmx30G -jar /mgh/scripts/gCNV_helper.jar filter ${name}_frequencied.bed ${name}_filtered.bed
+java -Xmx30G -jar /mgh/scripts/gCNV_helper.jar annotateWithGenes any ${gtf} ${name}_filtered.bed ${name}_intermediate1.bed svtype
+java -Xmx30G -jar /mgh/scripts/gCNV_helper.jar countExons ${name}_intermediate1.bed genes_any_overlap ${gtf} ${name}_intermediate2.bed
+java -Xmx30G -jar /mgh/scripts/gCNV_helper.jar annotateWithGenes strict ${gtf} ${name}_intermediate2.bed ${name}_intermediate3.bed svtype
+java -Xmx30G -jar /mgh/scripts/gCNV_helper.jar countExons ${name}_intermediate3.bed genes_strict_overlap ${gtf} ${name}_annotated.bed
 ```
 
+${name}_annotated.bed is the final processed callset. EVerything following is optional QC
 
-`gcnv_annotated.bed` is the main output file. You can use other gCNV_helper methods to produce other metadata files or add metadata columns to this file at your own discretion
-
-
+# optional , 
 look at aneuploidies. First need to download the ploidy information
-sh script to download ploidy calls, input is manifest file
-```{}
+input is manifest file
+```{sh}
 #!/bin/bash
+cut -f2 sample_set_entity.tsv | tr "," "\n" | grep -o -P "gs://.*tar.gz" > contig-ploidy-calls.txt
 
-wcl=$(wc -l ${1} | cut -d " " -f1)
+input_file=contig-ploidy-calls.txt
+wcl=$(wc -l ${input_file} | cut -d " " -f1)
 echo $wcl
 
 
@@ -637,38 +353,35 @@ echo $d
 cd $d
 tar -xf *tar.gz
 cd ..
-done
 ```
+
 
 Get ploidy conunts
 ```{r}
 wd <- ""
-ploidy_files <- list.files(paste0(wd ,"ploidy/"), pattern="contig_ploidy.tsv", recursive = TRUE, full.names = TRUE)
+ploidy_files <- list.files(paste0(wd), pattern="contig_ploidy.tsv", recursive = TRUE, full.names = TRUE)
 
 ploidy_dfs <- lapply(ploidy_files, function(x){
   df <- read.table(x, comment.char = "@", header=TRUE, stringsAsFactors=FALSE, quote="", fill=TRUE)
   df$sample <- str_extract_all(scan(x, what="character", sep="\n", nlines=1, quiet=TRUE)[[1]], "(?<=SM:).*")[[1]]
   return(df)
 })
-
 ploidy_df <- do.call(rbind, ploidy_dfs)
-sex_ploidy_sums <- do.call(c, lapply(ploidy_dfs, function(df) sum(df$PLOIDY[str_detect(df$CONTIG, "X|Y")])))
-sex_ploidy_samples <- unique(do.call(rbind, ploidy_dfs[which(sex_ploidy_sums!=2)])$sample)
-autosome_ploidy_samples <- ploidy_df[ploidy_df$PLOIDY!=2 & !str_detect(ploidy_df$CONTIG, "X|Y"),]$sample
-ploidy_samples <- c(sex_ploidy_samples, autosome_ploidy_samples)
+
+ploidy_samples_df <- ploidy_df[ploidy_df$PLOIDY > 2 & ploidy_df$CONTIG != "chrX", ]
+write.table(ploidy_samples_df, "aneuploidy_samples.tsv", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
 ```
 
 Download DCR files
 ```{r}
 # This will take a while, you might want to subset to files with aneuploidies
 system2("java", sprintf("-Xmx16G -jar %s getBarcodeCounts %ssample_set_entity.tsv %s/ploidy/ denoised_copy_ratios", jar_path, wd, wd ))
-system2("gunzip", sprintf("%s/*/*.tar.gz")) # make sure output are each uncompressed
 ```
 
 
 Plot ploidy counts,
 ```{r}
-wd <- ""
+# wd <- "C:/Users/iwong/Documents/MGH/IBD/final_output/dcr/"
 dcr_files <- list.files(wd, pattern="denoised_copy_ratios-", recursive = TRUE, full.names = TRUE)
 temp1 <- str_detect(dcr_files, paste0("(",paste(ploidy_samples, collapse=")|(") , ")")) 
 temp2 <- dcr_files[temp1]
@@ -700,9 +413,9 @@ df_instances <- rep("-1", unique(sex_ploidy_dfs$sample) %>% length)
 for(i in seq_along(unique(sex_ploidy_dfs$sample))){
   par(mfrow=c(1,2))
   df <- dcr_df[dcr_df$sample==unique(sex_ploidy_dfs$sample)[i], ]
-  plot_x <- plot_ploidy(df[str_detect(df$CONTIG, "X"),])
-  plot_y <- plot_ploidy(df[str_detect(df$CONTIG, "Y"),])
-  grid.arrange(plot_x, plot_y, ncol=2)
+  # plot_x <- plot_ploidy(df[str_detect(df$CONTIG, "X"),])
+  # plot_y <- plot_ploidy(df[str_detect(df$CONTIG, "Y"),])
+  # grid.arrange(plot_x, plot_y, ncol=2)
   
   temp_df_x <- df[str_detect(df$CONTIG, "X"),]
   temp_df_y <- df[str_detect(df$CONTIG, "Y"),]
@@ -710,22 +423,19 @@ for(i in seq_along(unique(sex_ploidy_dfs$sample))){
                           rep(temp_df_x$CONTIG[1], ploidy_df[ploidy_df$CONTIG==temp_df_x$CONTIG[1] & ploidy_df$sample==temp_df_x$sample[1],]$PLOIDY[1]),
                           rep(temp_df_y$CONTIG[1], ploidy_df[ploidy_df$CONTIG==temp_df_y$CONTIG[1] & ploidy_df$sample==temp_df_y$sample[1],]$PLOIDY[1])
                           ) %>% paste0(collapse = "")
-
-  my_plot <- arrangeGrob(plot_x, plot_y, ncol=2)
-  ggsave(sprintf("%s/dcr_plots/ploidy_sample_%s_sex_chroms.pdf", wd, df$sample[1]), my_plot)
+# 
+#   my_plot <- arrangeGrob(plot_x, plot_y, ncol=2)
+#   ggsave(sprintf("%s/dcr_plots/ploidy_sample_%s_sex_chroms.pdf", wd, df$sample[1]), my_plot)
 }
 ```
-
-
 
 
 Main Figures
 variant count boxplots
 ```{r}
 wd <- ""
-gcnv <- read(wd, "gcn.bed")
-# ploidy_samples <- read.table("ploidy_samples.txt", sep="\t", header=TRUE, stringsAsFactors = FALSE)[,1]
-# ploidy_samples <- c()
+gcnv <- read(wd, "_annotated.bed")
+ploidy_samples <- read.table("aneuploidy_samples.tsv", sep="\t", header=TRUE)
 
 qs_window <- seq(0, 100, 10)
 total_variants <- rep(0, length(qs_window))
@@ -754,6 +464,74 @@ df$n_variants_log10 <- df$n_variants %>% log10
 
 gcnvhq <- gcnv[gcnv$HIGH_QUALITY, ]
 write.table(gcnvhq, paste0(wd, "gcnv_HQ.tsv"), sep="\t", row.names = FALSE, col.names = TRUE, quote=FALSE)
+```
+
+# failure rate per batch
+```{r}
+df00 <- gcnv
+df00 <- df00[match(unique(df00$sample), df00$sample), ]
+df00$batch <- df00$name %>% str_extract_all("(A|B)_\\d*(?=_)") %>% unlist
+batchToSample <- HashMap$new()
+batchToSample$populate_append(df00, "batch", "sample")
+sampleToPassRaw <- HashMap$new()
+sampleToPassHQ <- HashMap$new()
+sampleToPassFinal <- HashMap$new()
+sampleToPassRaw$populate(df00, "sample", "lt100_raw_calls")
+sampleToPassHQ$populate(df00, "sample", "lt10_highQS_rare_calls")
+sampleToPassFinal$populate(df00, "sample", "PASS_SAMPLE")
+
+batches <- df00$batch %>% u 
+perBatchRate <- lapply(batches, function(B) {
+  bool_passRaw <- lapply(batchToSample$get(B), function(S) {
+    sampleToPassRaw$get(S)
+  }) %>% unlist
+  bool_passHQ <- lapply(batchToSample$get(B), function(S) {
+    sampleToPassHQ$get(S)
+  }) %>% unlist
+  bool_passFinal <- lapply(batchToSample$get(B), function(S) {
+    sampleToPassFinal$get(S)
+  }) %>% unlist
+  perc_raw <- length(which(bool_passRaw))/length(bool_passRaw)
+  perc_hq <- length(which(bool_passHQ))/length(bool_passHQ) 
+  perc_final <- length(which(bool_passFinal))/length(bool_passFinal)
+  return(c(B, perc_raw, perc_hq, perc_final))
+}) %>% do.call(rbind, .) %>% as.data.frame(stringsAsFactors=FALSE)
+colnames(perBatchRate) <- c("batch", "raw", "HQ", "all")
+for(i in 2:4){
+  perBatchRate[, i] <- (perBatchRate[, i] %>% as.numeric() %>% round(digits = 4)) * 100
+}
+
+perBatchRate$N <- lapply(perBatchRate$batch, function(x){
+  batchToSample$get(x) %>% length
+}) %>% unlist
+
+length(which(df00$PASS_SAMPLE)) / nrow(df00)
+1 - length(which(df00$PASS_SAMPLE)) / nrow(df00)
+
+perBatchRate <- perBatchRate[order(perBatchRate$all, decreasing = TRUE), ]
+
+lm_eqn <- function(df){
+    m <- lm(all ~ N, df);
+    eq <- substitute(italic(y) == a + b %.% italic(x)*","~~italic(r)^2~"="~r2, 
+         list(a = format(unname(coef(m)[1]), digits = 2),
+              b = format(unname(coef(m)[2]), digits = 2),
+             r2 = format(summary(m)$r.squared, digits = 3)))
+    as.character(as.expression(eq));
+}
+
+g0 <- ggplot(perBatchRate, aes(x=N, y=all)) + 
+  geom_point() + 
+  xlab("N samples per batch") + 
+  ylab("sample pass rate (%)") + 
+  ggtitle("per batch sample failure rate") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  stat_summary(fun.data= mean_cl_normal) + 
+  geom_smooth(method='lm') + 
+  geom_text(x = 3000, y = 92.5, label = lm_eqn(perBatchRate), parse = TRUE)
+
+g0
+
+write.table(perBatchRate, "per_batch_failure_rate.tsv", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
 ```
 
 
@@ -820,6 +598,144 @@ g5 <- ggplot(df[df$qs_threshold==100,] , aes(x=n_variants_log2)) +
 g5
 ```
 
+
+
+number of variants vs number of exons
+```{r}
+cohort_name <- ""
+if(FALSE){
+  qual_type <- "raw"
+  dup_count <- gcnv[gcnv$svtype=="DUP" & gcnv$chr!="chrX" & gcnv$chr!="chrY" & gcnv$genes_any_overlap_totalExons!="NA", ]
+  del_count <- gcnv[gcnv$svtype=="DEL" & gcnv$chr!="chrX" & gcnv$chr!="chrY" & gcnv$genes_any_overlap_totalExons!="NA", ]  
+  nvarps <- c(0, 6)
+} else {
+  qual_type <- "HQ"
+  dup_count <- gcnv[gcnv$svtype=="DUP" & gcnv$HIGH_QUALITY & gcnv$chr!="chrX" & gcnv$chr!="chrY" & gcnv$genes_any_overlap_totalExons!="NA", ]
+  del_count <- gcnv[gcnv$svtype=="DEL" & gcnv$HIGH_QUALITY & gcnv$chr!="chrX" & gcnv$chr!="chrY" & gcnv$genes_any_overlap_totalExons!="NA", ]  
+  nvarps <- c(0, 0.9)
+}
+
+if(FALSE){
+  ploidy_samples_df <- read.table("C:/Users/iwong/Documents/MGH/ukbb/08_QC/aneuploidy_samples.tsv", sep="\t", header=TRUE)
+  list_by_aneu_bool_to_remove <- lapply(seq_down(ploidy_samples_df), function(x) {
+    bool_same_sample <- gcnv$sample == ploidy_samples_df$sample[x]
+    bool_same_chr <- gcnv$chr == ploidy_samples_df$CONTIG[x]
+    return(as.integer(bool_same_sample & bool_same_chr))
+  })
+  bool_df <- list2DF(list_by_aneu_bool_to_remove)
+  bool_to_keep <- rowSums(bool_df) == 0
+  gcnv <- gcnv[bool_to_keep, ]
+} else{
+  
+}
+
+del_count$n_exons <- del_count$genes_any_overlap_totalExons
+dup_count$n_exons <- dup_count$genes_any_overlap_totalExons
+
+del_count <- del_count[del_count$n_exons >= 4, ]
+dup_count <- dup_count[dup_count$n_exons >= 4, ]
+
+unique_dup <- dup_count
+unique_del <- del_count
+
+exon_table_dup <- table(unique_dup$n_exons)
+exon_table_del <- table(unique_del$n_exons)
+
+df_dup <- data.frame(nexons=names(exon_table_dup) %>% as.numeric(), nvariants=as.numeric(exon_table_dup))
+df_dup <- df_dup[order(df_dup$nexons, decreasing = FALSE),]
+for(i in seq(nrow(df_dup)-1, 1, -1)){
+  df_dup$nvariants[i] = df_dup$nvariants[i] + df_dup$nvariants[i+1]
+}
+
+df_del <- data.frame(nexons=names(exon_table_del) %>% as.numeric(), nvariants=as.numeric(exon_table_del))
+df_del <- df_del[order(df_del$nexons, decreasing = FALSE),]
+for(i in seq(nrow(df_del)-1, 1, -1)){
+  df_del$nvariants[i] = df_del$nvariants[i] + df_del$nvariants[i+1]
+}
+
+df_del$type <- "DEL"
+df_dup$type <- "DUP"
+df <- rbind(df_del, df_dup)
+df$log2_nvars <- log2(df$nvariants)
+df$log2_nexons <- log2(df$nexons)
+df$nvariants_per_sample <- df$nvariants / lu(gcnv$sample)
+
+# singletons
+singletons_del <- which(table(del_count$variant_name[!del_count$sample %in% ploidy_samples])==1) %>% names
+df_single_del <- del_count[del_count$variant_name %in% singletons_del, ]
+exon_table_single_del <- table(df_single_del$n_exons)
+exon_table_del <- table(del_count$n_exons)
+df_del <- data.frame(nexons=names(exon_table_del) %>% as.numeric(), nvariants=as.numeric(exon_table_del))
+df_del <- df_del[order(df_del$nexons, decreasing = FALSE),]
+df1_del <- data.frame(nexons=names(exon_table_single_del) %>% as.numeric(), nvariants_single=as.numeric(exon_table_single_del))
+df1_del <- df1_del[order(df1_del$nexons, decreasing = FALSE),]
+df2_del <- merge(df_del, df1_del)
+for(i in seq(nrow(df2_del)-1, 1, -1)){
+  df2_del$nvariants[i] = df2_del$nvariants[i] + df2_del$nvariants[i+1]
+  df2_del$nvariants_single[i] = df2_del$nvariants_single[i] + df2_del$nvariants_single[i+1]
+}
+df2_del$proportion <- df2_del$nvariants_single/df2_del$nvariants*100
+df2_del$type <- "DEL"
+
+singletons_dup <- which(table(dup_count$variant_name[!dup_count$sample %in% ploidy_samples])==1) %>% names
+df_single_dup <- dup_count[dup_count$variant_name %in% singletons_dup, ]
+exon_table_single_dup <- table(df_single_dup$n_exons)
+exon_table_dup <- table(dup_count$n_exons)
+df_dup <- data.frame(nexons=names(exon_table_dup) %>% as.numeric(), nvariants=as.numeric(exon_table_dup))
+df_dup <- df_dup[order(df_dup$nexons, decreasing = FALSE),]
+df1_dup <- data.frame(nexons=names(exon_table_single_dup) %>% as.numeric(), nvariants_single=as.numeric(exon_table_single_dup))
+df1_dup <- df1_dup[order(df1_dup$nexons, decreasing = FALSE),]
+df2_dup <- merge(df_dup, df1_dup)
+for(i in seq(nrow(df2_dup)-1, 1, -1)){
+  df2_dup$nvariants[i] = df2_dup$nvariants[i] + df2_dup$nvariants[i+1]
+  df2_dup$nvariants_single[i] = df2_dup$nvariants_single[i] + df2_dup$nvariants_single[i+1]
+}
+df2_dup$proportion <- df2_dup$nvariants_single/df2_dup$nvariants*100
+df2_dup$type <- "DUP"
+
+df3 <- rbind(df2_del, df2_dup)
+df3$log2_nexons <- df3$nexons %>% log2
+```
+
+
+```{r}
+g6.1 <- ggplot(data=df, aes(x=log2_nexons, y=nvariants, group=type)) +
+  geom_line(aes(colour=type), size=1.5) +
+  scale_color_manual(values=c(wes_palette("FantasticFox1")[5], wes_palette("FantasticFox1")[3])) +
+  theme(legend.position="bottom") + 
+  scale_x_continuous(breaks=0:12, labels=2^(0:12)) +
+  xlab("number of exons") + 
+  ylab(paste0("number of ",qual_type ," variants")) + 
+  ggtitle(paste0(cohort_name, ", Distribution of ",qual_type ," CNVs"))  +
+  coord_cartesian(xlim=c(2,12))
+g6.2 <- ggplot(data=df, aes(x=log2_nexons, y=nvariants_per_sample, group=type)) +
+  geom_line(aes(colour=type), size=1.5) +
+  scale_color_manual(values=c(wes_palette("FantasticFox1")[5], wes_palette("FantasticFox1")[3])) +
+  theme(legend.position="bottom") + 
+  scale_x_continuous(breaks=0:12, labels=2^(0:12)) +
+  xlab("number of exons") + 
+  ylab(paste0("number of ",qual_type ," variants per sample")) + 
+  ggtitle(paste0(cohort_name, ", Distribution of ",qual_type ," CNVs per sample"))  +
+  coord_cartesian(xlim=c(2,12), ylim=nvarps)
+g6.1
+g6.2
+```
+
+```{r}
+g7 <- ggplot(data=df3[df3$nexons<5000  , ], aes(x=log2_nexons, y=proportion, group=type)) +
+  geom_line(aes(colour=type), size=1.5) +
+  scale_color_manual(values=c(wes_palette("FantasticFox1")[5], wes_palette("FantasticFox1")[3])) +
+  theme(legend.position="bottom") + 
+  scale_x_continuous(breaks=0:12, labels=2^(0:12)) +
+  xlab("number of exons") + 
+  ylab("percent of singletons") + 
+  ggtitle(paste0(cohort_name, ", Distribution of ", qual_type, " CNVs, no chrX")) + 
+  ylim(0, 100) 
+g7
+```
+
+
+
 overlapping histogram of size
 ```{r}
 df <- gcnv[, c("start", "end", "svtype", "PASS_FREQ", "PASS_SAMPLE", "PASS_QS")]
@@ -828,6 +744,7 @@ df$size_log10 <- df$size %>% log10
 df$size_log2 <- df$size %>% log2
 df$HQ <- df$PASS_FREQ & df$PASS_QS & df$PASS_SAMPLE
 ```
+
 
 ```{r}
 g8 <- ggplot(data=df[df$size>0.125 & df$size<1500, ], aes(x=size_log2, fill=svtype)) +
@@ -849,75 +766,58 @@ g9 <- ggplot(data=df[df$size>0.125 & df$size<1500 & df$HQ, ], aes(x=size_log2, f
 g9
 ```
 
-venn diagram
+dist of hq calls
+the proportion of samples with 0, 1, 2, 3, 4, and >4 HQ CNVs, and for each value on the X axi
 ```{r}
-samp <- c(TRUE, FALSE)
-freq <- c(TRUE, FALSE)
-qs <- c(TRUE, FALSE)
-temp_df <- expand.grid(samp, freq, qs)
-colnames(temp_df) <- c("samp", "freq","qs")
-temp_df$count <- -1
-temp_df$percent_of_all_calls <- -1
-temp_df$per_sample <- -1
-for(i in 1:nrow(temp_df)){
-  temp_df$count[i] <- nrow(gcnv[gcnv$PASS_SAMPLE==temp_df$samp[i] & gcnv$PASS_FREQ==temp_df$freq[i] & gcnv$PASS_QS==temp_df$qs[i],])
-  temp_df$percent_of_all_calls[i] <- temp_df$count[i] / nrow(gcnv) * 100
-  temp_df$per_sample[i] <- temp_df$count[i] / (gcnv$sample %>% unique %>% length)
-}
+ASC <- read.table("ASC_benchmark_callset.bed", sep="\t", header=TRUE)
+asc_hq <- ASC[ASC$HIGH_QUALITY, ]
+gcnv_hq <- gcnv[gcnv$HIGH_QUALITY, ]
 
-length(unique(gcnv[gcnv$PASS_sample==temp_df$samp[i] & gcnv$PASS_freq==temp_df$freq[i] & gcnv$PASS_QS==temp_df$qs[i],]$sample))
-dim(gcnv[gcnv$PASS_sample==temp_df$samp[i] & gcnv$PASS_freq==temp_df$freq[i] & gcnv$PASS_QS==temp_df$qs[i],])
-length(unique(gcnv[gcnv$PASS_sample==temp_df$samp[i] & gcnv$PASS_freq==temp_df$freq[i] & gcnv$PASS_QS==temp_df$qs[i],]$name))
+no_hq_asc <-ASC$sample[!ASC$sample %in% asc_hq$sample] %>% lu
+no_hq_gcnv <-gcnv$sample[!gcnv$sample %in% gcnv_hq$sample] %>% lu
 
-length(unique(gcnv$sample))
-dim(gcnv)
-length(unique(gcnv$name))
+temp0 <- srt(asc_hq$sample) %>% srt %>% as.data.frame(stringsAsFactors=FALSE)
+temp0$x <- temp0$x %>% as.integer()
+temp0$Cohort <- "ASD"
+gte_10 <- data.frame(x = 10, Freq = sum(temp0$x[temp0$x >= 10]), Cohort="ASD", stringsAsFactors = FALSE)
+eq_0 <- data.frame(x = 0, Freq = no_hq_asc, Cohort="ASD", stringsAsFactors = FALSE)
+temp0 <- temp0[temp0$x < 10, ]
+temp0 <- rbind(temp0, gte_10, eq_0)
+temp0 <- temp0[order(temp0$x, decreasing = FALSE), ]
+temp0$prop <- temp0$Freq / sum(temp0$Freq) * 100
+temp0$cum_prop <- cumsum(temp0$Freq) / sum(temp0$Freq)
 
-temp_df
 
-pass_qs <- paste0(gcnv$sample[gcnv$PASS_QS], gcnv$name[gcnv$PASS_QS])
-pass_freq <- paste0(gcnv$sample[gcnv$PASS_FREQ], gcnv$name[gcnv$PASS_FREQ])
-pass_samp <- paste0(gcnv$sample[gcnv$PASS_SAMPLE], gcnv$name[gcnv$PASS_SAMPLE])
+temp1 <- srt(gcnv_hq$sample) %>% srt %>% as.data.frame(stringsAsFactors=FALSE)
+temp1$x <- temp1$x %>% as.integer()
+temp1$Cohort <- "EPI"
+gte_10 <- data.frame(x = 10, Freq = sum(temp1$x[temp1$x >= 10]), Cohort="EPI", stringsAsFactors = FALSE)
+eq_0 <- data.frame(x = 0, Freq = no_hq_gcnv, Cohort="EPI", stringsAsFactors = FALSE)
+temp1 <- temp1[temp1$x < 10, ]
+temp1 <- rbind(temp1, gte_10, eq_0)
+temp1 <- temp1[order(temp1$x, decreasing = FALSE), ]
+temp1$prop <- temp1$Freq / sum(temp1$Freq) * 100
+temp1$cum_prop <- cumsum(temp1$Freq) / sum(temp1$Freq)
 
-pass_qs %>% length()
-pass_freq %>% length()
-pass_samp %>% length()
+temp2 <- rbind(temp0, temp1)
+temp2$cum_prop <- temp2$cum_prop * 100
 
-library(RColorBrewer)
-myCol <- brewer.pal(3, "Pastel2")
-myCol <- wes_palette("Darjeeling1")[1:3]
-library(VennDiagram)
-venn.diagram(
-  x = list(pass_qs, pass_freq, pass_samp),
-  category.names = c("pass_qs" , "pass_freq" , "pass_sample"),
-  filename = paste0(wd, 'venn_diagramm.png'),
-  output=TRUE,
-  print.mode = c("raw", "percent"),
-  
-  # Output features
-  imagetype="png" ,
-  height = 900 , 
-  width = 900 , 
-  resolution = 300,
-  compression = "lzw",
-  
-  # Circles
-  lwd = 2,
-  lty = 'blank',
-  fill = myCol,
-  
-  # Numbers
-  cex = .6,
-  fontface = "bold",
-  fontfamily = "sans",
-  
-  # Set names
-  cat.cex = 0.6,
-  cat.fontface = "bold",
-  cat.default.pos = "outer",
-  cat.pos = c(-27, 27, 135),
-  cat.dist = c(0.055, 0.055, 0.085),
-  cat.fontfamily = "sans",
-  rotation = 1
-)
+g10 <- ggplot(temp2, aes(x=x, y = prop, fill=Cohort)) + 
+  geom_bar(position = "dodge", stat="identity") + 
+  scale_x_continuous(breaks = 0:10, labels = c(0:9, "10+")) + 
+  scale_y_continuous(breaks = seq(0, 40, 10)) + 
+  ylab("Percent of samples") + 
+  xlab("Number of HQ CNVs")
+g11 <- ggplot(temp2, aes(x = x, y = cum_prop)) +
+  geom_line(aes(colour=Cohort), size=2) +
+  scale_x_continuous(breaks = 0:10, labels = c(0:9, "10+")) + 
+  scale_y_continuous(breaks = seq(0, 100, 10)) + 
+  ylab("Percent of samples") + 
+  xlab("Cumulative Number of HQ CNVs")
 ```
+
+
+
+
+
+
