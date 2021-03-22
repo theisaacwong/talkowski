@@ -427,12 +427,12 @@ clusterOnSex <- function(wd, membership_file, seed = 123){
     n_sub_cluster <- 2
     current_super_cluster <- merged_counts[merged_counts$super_cluster == super_clusters[i],]
     
-    if(clustering_method = "hclust"){ # hclust is generally better using ward.D2 99% of the time so is ahrd coded here
+    if(clustering_method == "hclust"){ # hclust is generally better using ward.D2 99% of the time so is ahrd coded here
       hclust <- hclust(dist(current_super_cluster[, c("x", "y")]), method="ward.D2")
       cut_avg <- cutree(hclust, k=n_sub_cluster)
       labels <- c("A", "B")[cut_avg]
       sex_labels <- labels
-    } else if(clustering_method = "GMM"){
+    } else if(clustering_method == "GMM"){
       gclust <- GMM(current_super_cluster[, c("x", "y")], n_sub_cluster, km_iter = 20, em_iter=200)
       pr <- predict_GMM(current_super_cluster[, c("x", "y")], gclust$centroids, gclust$covariance_matrices, gclust$weights)
       labels <- c("A", "B")[1 + pr$cluster_labels]
