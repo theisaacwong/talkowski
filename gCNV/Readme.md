@@ -1,5 +1,5 @@
 This is a repository of small scripts intended to automate the batching, clustering, and basic QC of gCNV. Requires java 14. 
-Please use the R markdown (.Rmd) file for the full pipeline. 
+Please use the R markdown (.Rmd) file for the full pipeline. Source code for the jar file is in the gCNV directory.
 <pre>
         Version: 2.25
 
