@@ -10,16 +10,19 @@ import java.util.regex.Pattern;
 
 public class ConvertToEnsemble extends gCNVHelperTool {
 
-	public ConvertToEnsemble(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, COLUMN_NAME, GTF_PATH};
+
+	public ConvertToEnsemble(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException {
-		String GCNV_INPUT = args[1];
-		String OUTPUT = args[2];
-		String geneColumnName = args[3];
-		String gencodeGTF = args[4];
+		String GCNV_INPUT = args.get(INPUT_PATH);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		String geneColumnName = args.get(COLUMN_NAME);
+		String gencodeGTF = args.get(GTF_PATH);
 		this.convertToEnsemble(GCNV_INPUT, OUTPUT, geneColumnName, gencodeGTF);
 	}
 	

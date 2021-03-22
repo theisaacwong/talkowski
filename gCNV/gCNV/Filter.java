@@ -6,14 +6,17 @@ import java.util.HashMap;
 
 public class Filter extends gCNVHelperTool {
 
-	public Filter(String[] args) {
-		super(args);
-	}
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH};
 	
+	public Filter(ArgParser args) {
+		super(args, inputs);
+	}
+
+
 	@Override
 	public void run() throws IOException {
-		String input = args[1];
-		String output = args[2];
+		String input = args.get(INPUT_PATH);
+		String output = args.get(OUTPUT_PATH);
 		this.filter(input, output);
 	}
 

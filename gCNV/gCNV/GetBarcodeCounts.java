@@ -7,15 +7,18 @@ import java.io.IOException;
 
 public class GetBarcodeCounts extends gCNVHelperTool {
 
-	public GetBarcodeCounts(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {COLUMN_NAME, DIRECTORY, MANIFEST_PATH};
+
+	public GetBarcodeCounts(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String entityPath = args[1];
-		String wd = args[2];
-		String output_counts_barcode_regex = args[3];
+		String entityPath = args.get(MANIFEST_PATH);
+		String wd = args.get(DIRECTORY);
+		String output_counts_barcode_regex = args.get(COLUMN_NAME);
 		this.getBarcodeCounts(entityPath, wd, output_counts_barcode_regex);
 	}
 	

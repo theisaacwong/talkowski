@@ -18,17 +18,21 @@ import java.util.stream.Stream;
 
 public class GetCountsMatrixBuffered extends gCNVHelperTool {
 
-	public GetCountsMatrixBuffered(String[] args) {
-		super(args);
+	
+	public static String[] inputs = new String[] {OUTPUT_PATH, DIRECTORY, COUNTS_REGEX, BUFFER_SIZE};
+
+	public GetCountsMatrixBuffered(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String sourceFolder = args[1];
-		String OUTPUT_PATH = args[2];
-		String countsRegex = args[3];
-		int BUFFER_SIZE = Integer.parseInt(args[4]);
-		this.getCountsMatrixBuffered(sourceFolder, OUTPUT_PATH, countsRegex, BUFFER_SIZE);
+		String sourceFolder = args.get(DIRECTORY);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		String countsRegex = args.get(COUNTS_REGEX);
+		int BUFFER = Integer.parseInt(args.get(BUFFER_SIZE));
+		this.getCountsMatrixBuffered(sourceFolder, OUTPUT, countsRegex, BUFFER);
 	}
 	
 

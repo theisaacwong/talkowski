@@ -6,16 +6,19 @@ import java.util.HashMap;
 
 public class CountExons extends gCNVHelperTool {
 
-	public CountExons(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, COLUMN_NAME, GTF_PATH};
+
+	public CountExons(ArgParser args) {
+		super(args, inputs);
 	}
-	
+
+
 	@Override
 	public void run() throws IOException {
-		String GCNV_INPUT = args[1];
-		String genesColumnName = args[2];
-		String gencodeGTF = args[3];
-		String output = args[4];
+		String GCNV_INPUT = args.get(INPUT_PATH);
+		String genesColumnName = args.get(COLUMN_NAME);
+		String gencodeGTF = args.get(GTF_PATH);
+		String output = args.get(OUTPUT_PATH);
 		this.countExons(GCNV_INPUT, genesColumnName, gencodeGTF, output);
 	}
 	

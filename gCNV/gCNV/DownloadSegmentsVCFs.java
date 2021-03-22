@@ -7,15 +7,18 @@ import java.io.IOException;
 
 public class DownloadSegmentsVCFs extends gCNVHelperTool {
 
-	public DownloadSegmentsVCFs(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {MANIFEST_PATH, DIRECTORY, COLUMN_NAME};
+
+	public DownloadSegmentsVCFs(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String entityPath = args[1];
-		String wd = args [2];
-		String segments_vcfs_columnName = args[3];
+		String entityPath = args.get(MANIFEST_PATH);
+		String wd = args.get(DIRECTORY);
+		String segments_vcfs_columnName = args.get(COLUMN_NAME);
 		this.downloadSegmentsVCFs(entityPath, wd, segments_vcfs_columnName);
 	}
 	

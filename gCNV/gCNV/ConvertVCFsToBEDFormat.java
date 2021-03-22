@@ -12,16 +12,19 @@ import java.util.stream.Stream;
 
 public class ConvertVCFsToBEDFormat extends gCNVHelperTool {
 
-	public ConvertVCFsToBEDFormat(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {OUTPUT_PATH, DIRECTORY, PREFIX_REGEX, SUFFIX_REGEX};
+
+	public ConvertVCFsToBEDFormat(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException {
-		String wd = args[1];
-		String output = args[2];
-		String prefixRegex = args[3];
-		String suffixRegex = args[4];
+		String wd = args.get(DIRECTORY);
+		String output = args.get(OUTPUT_PATH);
+		String prefixRegex = args.get(PREFIX_REGEX);
+		String suffixRegex = args.get(SUFFIX_REGEX);
 		this.convertVCFsToBEDFormat(wd, output, prefixRegex, suffixRegex);
 	}
 	

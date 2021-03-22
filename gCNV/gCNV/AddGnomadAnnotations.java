@@ -6,16 +6,19 @@ import java.util.HashMap;
 
 public class AddGnomadAnnotations extends gCNVHelperTool{
 
-	public AddGnomadAnnotations(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, GTF_PATH, COLUMN_NAME};
+	
+	public AddGnomadAnnotations(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException {
-		String GCNV_INPUT = args[1];
-		String OUTPUT = args[2];
-		String gencodeGTF = args[3];
-		String geneColumnName = args[4];
+		String GCNV_INPUT = args.get(INPUT_PATH);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		String gencodeGTF = args.get(GTF_PATH);
+		String geneColumnName = args.get(COLUMN_NAME);
 		this.addGnomadAnnotations(GCNV_INPUT, OUTPUT, gencodeGTF, geneColumnName);
 	}
 	

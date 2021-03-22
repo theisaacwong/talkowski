@@ -7,16 +7,19 @@ import java.util.HashSet;
 
 public class CalculateFrequency extends gCNVHelperTool{
 
-	public CalculateFrequency(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, COLUMN_NAME};
+	
+	public CalculateFrequency(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException {
-		String INPUT_PATH = args[1];
-		String variantColumn = args[2];
-		String OUTPUT_PATH = args[3];
-		this.calculateFrequency(INPUT_PATH, variantColumn, OUTPUT_PATH);
+		String INPUT = args.get(INPUT_PATH);
+		String variantColumn = args.get(COLUMN_NAME);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		this.calculateFrequency(INPUT, variantColumn, OUTPUT);
 	}
 	
 	

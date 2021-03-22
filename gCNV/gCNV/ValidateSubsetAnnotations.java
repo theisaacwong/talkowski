@@ -4,22 +4,33 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Scanner;
 
 public class ValidateSubsetAnnotations extends gCNVHelperTool {
 
-	public ValidateSubsetAnnotations(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {GENE_SET_FILE, GTF_PATH};
+	
+	public ValidateSubsetAnnotations(ArgParser args, String[] toolArgs) {
+		super(args, toolArgs);
 	}
 	
+	public ValidateSubsetAnnotations(ArgParser args) {
+		super(args, inputs);
+	}
+
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String gtfFile = args[1];
+		String gtfFile = args.get(GTF_PATH);
+		
+		String annotationSubset = args.get(GENE_SET_FILE);
 		ArrayList<String> annotationSubsets = new ArrayList<>();
-		for (int i = 2; i < args.length; i++) {
-			annotationSubsets.add(args[i]);
+		annotationSubsets.add(annotationSubset);
+		if(args.contains("extra")) {
+			annotationSubsets.addAll(Arrays.asList(args.get("extra").split(",")));
 		}
+		
 		this.validateSubsetAnnotations(gtfFile, annotationSubsets);
 	}
 	

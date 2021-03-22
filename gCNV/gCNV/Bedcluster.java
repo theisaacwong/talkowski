@@ -14,24 +14,36 @@ import java.util.TreeSet;
 
 public class Bedcluster extends gCNVHelperTool{
 
-	public Bedcluster(String[] args) {
-		super(args);
-	}
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH};
 	
+	public Bedcluster(ArgParser args) {
+		super(args, inputs);
+	}
+
+
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String INPUT_PATH = args[1];
-		String OUTPUT_PATH = args[2];
-		if(args.length == 3) {
-			this.bedcluster(INPUT_PATH, OUTPUT_PATH, "suffix_", false, "");
-		} else if(args.length == 4) {
-			String prefix = args[3];
-			this.bedcluster(INPUT_PATH, OUTPUT_PATH, prefix, false, "");
-		} else if(args.length == 5) {	
-			String prefix = args[3];
-			String META_PATH = args[4];
+		String INPUT = args.get(INPUT_PATH);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		
+		if(args.contains("extra") == false) {
+			this.bedcluster(INPUT, OUTPUT, "suffix_", false, "");
+		} else {
+			String prefix = args.get("extra").split(",")[0];
+			String META_PATH = args.get("extra").split(",")[1];
 			this.bedcluster(INPUT_PATH, OUTPUT_PATH, prefix, true, META_PATH);
 		}
+		
+//		if(args.size() == 3) {
+//			this.bedcluster(INPUT_PATH, OUTPUT_PATH, "suffix_", false, "");
+//		} else if(args.size() == 4) {
+//			String prefix = args[3];
+//			this.bedcluster(INPUT_PATH, OUTPUT_PATH, prefix, false, "");
+//		} else if(args.length == 5) {	
+//			String prefix = args[3];
+//			String META_PATH = args[4];
+//			this.bedcluster(INPUT_PATH, OUTPUT_PATH, prefix, true, META_PATH);
+//		}
 	}
 	
 

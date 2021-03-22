@@ -6,19 +6,22 @@ import java.util.HashMap;
 
 public class JointCallVCF extends gCNVHelperTool {
 
-	public JointCallVCF(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, CLASS_COLUMN, OBSERVATION_COLUMN, COLUMN_NAME};
+
+	public JointCallVCF(ArgParser args) {
+		super(args, inputs);
 	}
-	
+
+
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String INPUT_PATH = args[1];
-		String OUTPUT_PATH = args[2];
-		String classColumn = args[3];
-		String observationColumn = args[4];
-		String sep = args[5];
-		String svtypeColumn = args[6];
-		this.jointCallVCF(INPUT_PATH, OUTPUT_PATH, classColumn, observationColumn, sep, svtypeColumn);
+		String INPUT = args.get(INPUT_PATH);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		String classColumn = args.get(CLASS_COLUMN);
+		String observationColumn = args.get(OBSERVATION_COLUMN);
+		String sep = ",";
+		String svtypeColumn = args.get(COLUMN_NAME);
+		this.jointCallVCF(INPUT, OUTPUT, classColumn, observationColumn, sep, svtypeColumn);
 	}
 
 

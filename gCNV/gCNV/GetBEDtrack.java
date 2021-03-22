@@ -19,16 +19,20 @@ import java.util.stream.Stream;
 
 public class GetBEDtrack extends gCNVHelperTool {
 
-	public GetBEDtrack(String[] args) {
-		super(args);
-	}
 	
+	public static String[] inputs = new String[] {COUNTS_REGEX, OUTPUT_PATH, DIRECTORY};
+
+	public GetBEDtrack(ArgParser args) {
+		super(args, inputs);
+	}
+
+
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String sourceFolder = args[1];
-		String OUTPUT_PATH = args[2];
-		String countsRegex = args[3];
-		this.getBEDtrack(sourceFolder, OUTPUT_PATH, countsRegex);
+		String sourceFolder = args.get(DIRECTORY);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		String countsRegex = args.get(COUNTS_REGEX);
+		this.getBEDtrack(sourceFolder, OUTPUT, countsRegex);
 	}
 	
 

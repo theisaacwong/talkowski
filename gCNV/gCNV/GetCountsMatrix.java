@@ -19,16 +19,19 @@ import java.util.stream.Stream;
 
 public class GetCountsMatrix extends gCNVHelperTool {
 
-	public GetCountsMatrix(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {DIRECTORY, OUTPUT_PATH, COUNTS_REGEX};
+
+	public GetCountsMatrix(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String sourceFolder = args[1];
-		String OUTPUT_PATH = args[2];
-		String countsRegex = args[3];
-		this.getCountsMatrix(sourceFolder, OUTPUT_PATH, countsRegex);
+		String sourceFolder = args.get(DIRECTORY);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		String countsRegex = args.get(COUNTS_REGEX);
+		this.getCountsMatrix(sourceFolder, OUTPUT, countsRegex);
 	}
 	
 

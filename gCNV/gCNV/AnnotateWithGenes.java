@@ -13,21 +13,23 @@ import java.util.Scanner;
 
 public class AnnotateWithGenes extends gCNVHelperTool {
 
-	public AnnotateWithGenes(String[] args) {
-		super(args);
-	}
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, GTF_PATH, COLUMN_NAME, ANNOTATION_MODE};
 	
+	public AnnotateWithGenes(ArgParser args) {
+		super(args, inputs);
+	}
+
 	@Override
 	public void run() throws IOException {
-		String mode = args[1];
-		var genes = parseGTFFile(args[2]);
-		String GCNV_INPUT = args[3];
-		String OUTPUT_PATH = args[4];
-		String typeColumnName = args[5];
+		String mode = args.get(ANNOTATION_MODE);
+		var genes = parseGTFFile(args.get(GTF_PATH));
+		String GCNV_INPUT = args.get(INPUT_PATH);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		String typeColumnName = args.get(COLUMN_NAME);
 		if(mode.equals("strict")) {
-			this.annotateGenesPercentBased(genes, GCNV_INPUT, OUTPUT_PATH, typeColumnName);
+			this.annotateGenesPercentBased(genes, GCNV_INPUT, OUTPUT, typeColumnName);
 		} else if(mode.equals("any")) {
-			this.annotateGenesAnyOverlap(genes, GCNV_INPUT, OUTPUT_PATH, typeColumnName);
+			this.annotateGenesAnyOverlap(genes, GCNV_INPUT, OUTPUT, typeColumnName);
 		} else {
 			System.out.println("wrong input");
 		}

@@ -11,18 +11,21 @@ import java.util.HashSet;
 
 public class Simplify extends gCNVHelperTool {
 	
-	public Simplify(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, COLUMN_TO_AGGREGATE_BY, COLUMNS_TO_AGGREGATE, COLUMN_TO_SPLIT_BY};
+
+	public Simplify(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String input = args[1];
-		String OUTPUT_PATH = args[2];
-		String columnToAggregateBy = args[3];
-		String columnsToAggregate = args[4];
-		String columnToSplitBy = args[5];
-		this.simplify(input, OUTPUT_PATH, columnToAggregateBy, columnsToAggregate, columnToSplitBy);
+		String input = args.get(INPUT_PATH);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		String columnToAggregateBy = args.get(COLUMN_TO_AGGREGATE_BY);
+		String columnsToAggregate = args.get(COLUMNS_TO_AGGREGATE);
+		String columnToSplitBy = args.get(COLUMN_TO_SPLIT_BY);
+		this.simplify(input, OUTPUT, columnToAggregateBy, columnsToAggregate, columnToSplitBy);
 	}
 	
 

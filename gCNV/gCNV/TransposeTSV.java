@@ -10,14 +10,16 @@ import java.util.Scanner;
 
 public class TransposeTSV extends gCNVHelperTool {
 
-	public TransposeTSV(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH};
+	
+	public TransposeTSV(ArgParser args) {
+		super(args, inputs);
 	}
 	
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String INPUT = args[1];
-		String OUTPUT = args[2];
+		String INPUT = args.get(INPUT_PATH);
+		String OUTPUT = args.get(OUTPUT_PATH);
 		this.transposeTSV(INPUT, OUTPUT);
 	}
 	

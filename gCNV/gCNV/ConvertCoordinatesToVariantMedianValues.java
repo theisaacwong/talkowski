@@ -6,16 +6,18 @@ import java.util.HashMap;
 
 public class ConvertCoordinatesToVariantMedianValues extends gCNVHelperTool  {
 
-	public ConvertCoordinatesToVariantMedianValues(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, COLUMN_NAME};
+
+	public ConvertCoordinatesToVariantMedianValues(ArgParser args) {
+		super(args, inputs);
 	}
-	
+
 	@Override
 	public void run() throws IOException {
-		String variantName = args[1];
-		String INPUT_PATH = args[2];
-		String OUTPUT_PATH = args[3];
-		this.convertCoordinatesToVariantMedianValues(variantName, INPUT_PATH, OUTPUT_PATH);
+		String variantName = args.get(COLUMN_NAME);
+		String INPUT = args.get(INPUT_PATH);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		this.convertCoordinatesToVariantMedianValues(variantName, INPUT, OUTPUT);
 	}
 	
 	public void convertCoordinatesToVariantMedianValues(String variantName, String input, String output) throws IOException {

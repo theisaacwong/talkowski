@@ -2,12 +2,10 @@ package gCNV;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Calendar;
-import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -46,10 +44,6 @@ public class gCNV_helper {
 		gCNV_helper g = new gCNV_helper(args);
 		System.out.println(g.toString());
 		System.out.println("version " + VERSION);
-		try {
-			g.checkVersion();
-		} catch (Exception e) {
-		}
 		System.out.println("Java version: " + System.getProperty("java.version"));
 		start();
 		g.run(args);
@@ -139,150 +133,103 @@ public class gCNV_helper {
 					+ versionString + ". Updating is strongly recommended.");
 		}
 	}
-
-	/**
-	 * this started out as only three options but has quickly spiralled out of
-	 * control, I'm so sorry
-	 */
-	public void printOptions() {
-		System.out.println("java -jar gCNV_helper.jar [Command] [required argument(s)] ");
-		System.out.println();
-		InputStream in = this.getClass().getResourceAsStream("/helpMenu"); 
-		Scanner sc = new Scanner(in, "UTF-8");
-		String line = "";
-		while(sc.hasNextLine()) {
-			line = sc.nextLine();
-			System.out.println(line);
-		}
-		sc.close();
-	}
-
-	public void printOptionsShort() {
-		System.out.println("java -jar gCNV_helper.jar [Command] [required argument(s)] ");
-		System.out.println();
-		InputStream in = this.getClass().getResourceAsStream("/helpMenuShort"); 
-		Scanner sc = new Scanner(in, "UTF-8");
-		String line = "";
-		while(sc.hasNextLine()) {
-			line = sc.nextLine();
-			System.out.println(line);
-		}
-		sc.close();
-	}
-
-	public void run0(String[] args) throws IOException, InterruptedException {
-		
-		gCNVHelperTool gCNVHelperTool;
-		System.out.println();
-		if (args.length == 0) {
-			printOptionsShort();
-			return;
-		}
-		String toolName = args[0];
-		switch (toolName) {
-		case "addGnomadAnnotations" -> {
-			gCNVHelperTool = new AddGnomadAnnotations(args);
-		}
-		default -> {
-			gCNVHelperTool = new gCNVHelperTool(args);
-		}
-		}
-		
-		gCNVHelperTool.run();
-		
-	}
 	
 	public void run(String[] args) throws IOException, InterruptedException {
+		ArgParser userArgs = new ArgParser(args);
 		gCNVHelperTool gCNVHelperTool = null;
+		
+		if(userArgs.contains("--no-check") == false) {
+			this.checkVersion();
+		}
 		
 		System.out.println();
 		if (args.length == 0) {
-			printOptionsShort();
 			return;
 		}
-		String toolName = args[0];
+		
+		String toolName = userArgs.get("toolname");
 		switch (toolName) {
 		case "-help" -> {
-			printOptions();
+			gCNVHelperTool = new Help(userArgs);
 		}
 		case "--help" -> {
-			printOptions();
+			gCNVHelperTool = new Help(userArgs);
 		}
 		case "-h" -> {
-			printOptions();
+			gCNVHelperTool = new Help(userArgs);
 		}
 		case "addGnomadAnnotations" -> {
-			gCNVHelperTool = new AddGnomadAnnotations(args);
+			gCNVHelperTool = new AddGnomadAnnotations(userArgs);
 		}
 		case "annotateWithGenes" -> {
-			gCNVHelperTool = new AnnotateWithGenes(args);
+			gCNVHelperTool = new AnnotateWithGenes(userArgs);
 		}
 		case "bedcluster" -> {
-			gCNVHelperTool = new Bedcluster(args);
+			gCNVHelperTool = new Bedcluster(userArgs);
 		}
 		case "calculateFrequency" -> {
-			gCNVHelperTool = new CalculateFrequency(args);
+			gCNVHelperTool = new CalculateFrequency(userArgs);
 		}
 		case "condenseBedtoolsIntersect" -> {
-			gCNVHelperTool = new CondenseBedtoolsIntersect(args);
+			gCNVHelperTool = new CondenseBedtoolsIntersect(userArgs);
 		}
 		case "convertCoordinatesToVariantMedianValues" -> {
-			gCNVHelperTool = new ConvertCoordinatesToVariantMedianValues(args);
+			gCNVHelperTool = new ConvertCoordinatesToVariantMedianValues(userArgs);
 		}
 		case "convertToEnsemble" -> {
-			gCNVHelperTool = new ConvertToEnsemble(args);
+			gCNVHelperTool = new ConvertToEnsemble(userArgs);
 		}
 		case "convertVCFsToBEDFormat" -> {
-			gCNVHelperTool = new ConvertVCFsToBEDFormat(args);
+			gCNVHelperTool = new ConvertVCFsToBEDFormat(userArgs);
 		}
 		case "countExons" -> {
-			gCNVHelperTool = new CountExons(args);
+			gCNVHelperTool = new CountExons(userArgs);
 		}
 		case "defragment" -> {
-			gCNVHelperTool = new Defragment(args);
+			gCNVHelperTool = new Defragment(userArgs);
 		}
 		case "downloadSegmentsVCFs" -> {
-			gCNVHelperTool = new DownloadSegmentsVCFs(args);
+			gCNVHelperTool = new DownloadSegmentsVCFs(userArgs);
 		}
 		case "filter" -> {
-			gCNVHelperTool = new Filter(args);
+			gCNVHelperTool = new Filter(userArgs);
 		}
 		case "getBarcodeCounts" -> {
-			gCNVHelperTool = new GetBarcodeCounts(args);
+			gCNVHelperTool = new GetBarcodeCounts(userArgs);
 		}
 		case "getBEDtrack" -> {
-			gCNVHelperTool = new GetBEDtrack(args);
+			gCNVHelperTool = new GetBEDtrack(userArgs);
 		}
 		case "getCountsMatrix" -> {
-			gCNVHelperTool = new GetCountsMatrix(args);
+			gCNVHelperTool = new GetCountsMatrix(userArgs);
 		}
 		case "getCountsMatrixBuffered" -> {
-			gCNVHelperTool = new GetCountsMatrixBuffered(args);
+			gCNVHelperTool = new GetCountsMatrixBuffered(userArgs);
 		}
 		case "getPerSampleMetrics" -> {
-			gCNVHelperTool = new GetPerSampleMetrics(args);
+			gCNVHelperTool = new GetPerSampleMetrics(userArgs);
 		}
 		case "jointCallVCF" -> {
-			gCNVHelperTool = new JointCallVCF(args);
+			gCNVHelperTool = new JointCallVCF(userArgs);
 		}
 		case "labelMedianQS" -> {
-			gCNVHelperTool = new LabelMedianQS(args);
+			gCNVHelperTool = new LabelMedianQS(userArgs);
 		}
 		case "simplify" -> {
-			gCNVHelperTool = new Simplify(args);
+			gCNVHelperTool = new Simplify(userArgs);
 		}
 		case "subsetAnnotations" -> {
-			gCNVHelperTool = new SubsetAnnotations(args);
+			gCNVHelperTool = new SubsetAnnotations(userArgs);
 		}
 		case "transposeTSV" -> {
-			gCNVHelperTool = new TransposeTSV(args);
+			gCNVHelperTool = new TransposeTSV(userArgs);
 		}
 		case "validateSubsetAnnotations" -> {
-			gCNVHelperTool = new ValidateSubsetAnnotations(args);
+			gCNVHelperTool = new ValidateSubsetAnnotations(userArgs);
 		}
 		default -> {
 			System.out.println("unknown command: " + toolName);
-			gCNVHelperTool = new gCNVHelperTool(args);
+			gCNVHelperTool = new Help(userArgs);
 		}
 
 		}

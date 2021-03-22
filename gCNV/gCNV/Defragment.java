@@ -9,20 +9,33 @@ import java.util.HashSet;
 
 public class Defragment extends gCNVHelperTool {
 
-	public Defragment(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH};
+
+	public Defragment(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException {
-		String match_output = args[1];
-		String defragmentation_output = args[2];
-		if(args.length==3) {
-			this.defragment(match_output, defragmentation_output);	
+		String match_output = args.get(INPUT_PATH);
+		String defragmentation_output = args.get(OUTPUT_PATH);
+		
+		
+		if(args.contains("extra") == false) {
+			this.defragment(match_output, defragmentation_output);
 		} else {
-			String filteredIntervals = args[3];
+			String filteredIntervals = args.get("extra");
 			this.defragment3(match_output, defragmentation_output, filteredIntervals);
 		}
+		
+		
+//		if(args.length==3) {
+//			this.defragment(match_output, defragmentation_output);	
+//		} else {
+//			String filteredIntervals = args[3];
+//			this.defragment3(match_output, defragmentation_output, filteredIntervals);
+//		}
 	}
 	
 

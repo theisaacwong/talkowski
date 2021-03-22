@@ -17,18 +17,22 @@ import java.util.Set;
 
 public class CondenseBedtoolsIntersect extends gCNVHelperTool {
 
-	public CondenseBedtoolsIntersect(String[] args) {
-		super(args);
+
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, COLUMNS_TO_HASH_ON_STRING, COLUMNS_TO_MERGE_STRING, COLUMNS_TO_KEEP_STRING};
+
+	public CondenseBedtoolsIntersect(ArgParser args) {
+		super(args, inputs);
 	}
+
 
 	@Override
 	public void run() throws IOException {
-		String INPUT_PATH = args[1];
-		String OUTPUT_PATH = args[2];
-		String columnsToHashOnString = args[3];
-		String columnsToMergeString = args[4];
-		String columnsToKeepString = args[5];
-		this.condenseBedtoolsIntersect(INPUT_PATH, OUTPUT_PATH, columnsToHashOnString, columnsToMergeString, columnsToKeepString);
+		String INPUT = args.get(INPUT_PATH);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		String columnsToHashOnString = args.get(COLUMNS_TO_HASH_ON_STRING);
+		String columnsToMergeString = args.get(COLUMNS_TO_MERGE_STRING);
+		String columnsToKeepString = args.get(COLUMNS_TO_KEEP_STRING);
+		this.condenseBedtoolsIntersect(INPUT, OUTPUT, columnsToHashOnString, columnsToMergeString, columnsToKeepString);
 	}
 	
 

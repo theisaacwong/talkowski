@@ -11,16 +11,53 @@ import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class gCNVHelperTool {
+public abstract class gCNVHelperTool {
 
+	public static final String INPUT_PATH = "-i";
+	public static final String OUTPUT_PATH = "-o";
+	public static final String GTF_PATH = "-g";
+	public static final String MANIFEST_PATH = "-m";
+	public static final String COLUMN_NAME = "-c";
+	public static final String DIRECTORY = "-d";
+	public static final String COUNTS_REGEX = "-r";
+	public static final String BUFFER_SIZE = "-b";
+	public static final String CLASS_COLUMN = "-s";
+	public static final String OBSERVATION_COLUMN = "-d";
+	public static final String VARIANT_COLUMN = "-v";
+	public static final String QS_COLUMN = "-q";
 	
-	public String[] args;
+	public static final String COLUMN_TO_AGGREGATE_BY = "-x";
+	public static final String COLUMNS_TO_AGGREGATE = "-y";
+	public static final String COLUMN_TO_SPLIT_BY = "-z";
+	public static final String SECOND_OUTPUT = "-p";
 	
-	public gCNVHelperTool(String[] args) {
+	public static final String GENE_SET_FILE = "-l";
+	public static final String ANNOTATION_MODE = "-a";
+	
+	public static final String PREFIX_REGEX = "-p";
+	public static final String SUFFIX_REGEX = "-s";
+	
+	public static final String COLUMNS_TO_HASH_ON_STRING = "-h";
+	public static final String COLUMNS_TO_MERGE_STRING = "-m";
+	public static final String COLUMNS_TO_KEEP_STRING = "-k";
+	
+	
+	public String[] requiredArgs;
+	
+	public ArgParser args;
+	public String[] toolArgs;
+	
+	public gCNVHelperTool(ArgParser args, String[] toolArgs) {
 		this.args = args;
+		this.requiredArgs = toolArgs;
 	}
 	
+	public gCNVHelperTool(ArgParser args) {
+	}
 	
+	public boolean validate() {
+		return args.validate(toolArgs);
+	}
 	
 	public void run() throws IOException, InterruptedException {
 		

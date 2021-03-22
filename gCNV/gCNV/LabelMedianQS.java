@@ -6,17 +6,20 @@ import java.util.HashMap;
 
 public class LabelMedianQS extends gCNVHelperTool {
 
-	public LabelMedianQS(String[] args) {
-		super(args);
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, VARIANT_COLUMN, QS_COLUMN};
+
+	public LabelMedianQS(ArgParser args) {
+		super(args, inputs);
 	}
-	
+
+
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String INPUT_PATH = args[1];
-		String variantColumn = args[2];
-		String qsColumn = args[3];
-		String OUTPUT_PATH = args[4];
-		this.labelMedianQS(INPUT_PATH, variantColumn, qsColumn, OUTPUT_PATH);
+		String INPUT = args.get(INPUT_PATH);
+		String variantColumn = args.get(VARIANT_COLUMN);
+		String qsColumn = args.get(QS_COLUMN);
+		String OUTPUT = args.get(OUTPUT_PATH);
+		this.labelMedianQS(INPUT, variantColumn, qsColumn, OUTPUT);
 	}
 	
 

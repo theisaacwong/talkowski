@@ -3,26 +3,32 @@ package gCNV;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Scanner;
 
 public class SubsetAnnotations extends gCNVHelperTool {
 
-	public SubsetAnnotations(String[] args) {
-		super(args);
-	}
+	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH, SECOND_OUTPUT, COLUMN_NAME, GENE_SET_FILE};
 	
+	public SubsetAnnotations(ArgParser args) {
+		super(args, inputs);
+	}
+
 	@Override
 	public void run() throws IOException, InterruptedException {
-		String gcnvInput = args[1];
-		String output_1 = args[2];
-		String output_2 = args[3];
-		String sourceColumnName = args[4];
+		String gcnvInput = args.get(INPUT_PATH);
+		String output_1 = args.get(OUTPUT_PATH);
+		String output_2 = args.get(SECOND_OUTPUT);
+		String sourceColumnName = args.get(COLUMN_NAME);
+		String annotationSubset = args.get(GENE_SET_FILE);
 		ArrayList<String> annotationSubsets = new ArrayList<>();
-		for (int i = 5; i < args.length; i++) {
-			annotationSubsets.add(args[i]);
+		annotationSubsets.add(annotationSubset);
+		if(args.contains("extra")) {
+			annotationSubsets.addAll(Arrays.asList(args.get("extra").split(",")));
 		}
+		
 		this.subsetAnnotations(gcnvInput, output_1, output_2, sourceColumnName, annotationSubsets);
 	}
 
