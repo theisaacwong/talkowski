@@ -1,0 +1,45 @@
+- addGnomadAnnotations [-i input] [-o output] [-g gencode_gtf] [-c gene_column_name]
+
+- annotateWithGenes [-a mode] [-g gencode_gtf] [-i input] [-o output] [-c svtype_column_name]	
+
+- bedcluster [-i input] [-o output] {prefix} {meta_file_output}
+
+- calculateFrequency [-i input] [-c variant_column_name] [-o output]
+
+- condenseBedtoolsIntersect [-i input] [-o output] [-h columnsToHashOn] [-m columnsToMerge] [-k columnsToKeep]
+
+- convertCoordinatesToVariantMedianValues [-c variant_column_name] [-i input] [-o output]
+
+- convertToEnsemble [-i input] [-o output] [-c geneColumnName] [-g gencode_gtf]
+
+- convertVCFsToBEDFormat [-d directory] [-o output] [-p prefix_regex] [-s suffix_regex]
+
+- countExons [-i input] [-c gene_column_name] [-g gencode_gtf] [-o output] 
+
+- defragment [-i input] [-o output] {intervals}
+
+- downloadSegmentsVCFs [-m manifest] [-d directory] [-c column_name]
+
+- filter [-i input] [-o output]
+
+- getBarcodeCounts [-m manifest] [-d directory] [-c column_name]
+
+- getBEDtrack [-d directory] [-o output] [-r suffix]
+
+- getCountsMatrix [-d directory] [-o output] [-r suffix]
+
+- getCountsMatrixBuffered [-d directory] [-o output] [-r suffix] [-b buffer_size]
+
+- getPerSampleMetrics [-i input] [-c column_name] [-o output]
+
+- jointCallVCF [-i input] [-o output] [-d variant_column] [-s sample_column] [-c svtype_column]
+
+- labelMedianQS [-i input] [-v variantColumn] [-q qsColumn] [-o output]
+
+- simplify [-i input] [-o output] [-x column_to_aggregate_by] [-y columns_to_aggregate] [-z column_to_split_by]
+
+- subsetAnnotations [-i input] [-o main_output] [-p metadata_output] [-c gene_column_name] [-l gene_list_1 ... gene_list_n]
+
+- transposeTSV [-i input] [-o output]
+
+- validateSubsetAnnotations [-g gencode_gtf] [-l gene_list_1 ... gene_list_n]
