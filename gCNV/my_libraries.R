@@ -322,9 +322,9 @@ relabelSmallClusters <- function(pca, n_clusters, sorted_clusters, seed = 123, t
   main_cluster_centers <- cluster_centers[-c(which_clusters_to_relabel),]
   
   
-  nearest_clusters <- lapply(1:nrow(pca), function(i){
+  nearest_clusters <- lapply(1:nrow(pca$x), function(i){
     if(bool_cluster_relabel[i]){ 
-      dists <- as.matrix(dist(rbind(pca[i, ], main_cluster_centers)))[1, -1]
+      dists <- as.matrix(dist(rbind(pca$x[i, ], main_cluster_centers)))[1, -1]
       return(names(sort(dists))[1] %>% as.integer())
     } else {
       return(sorted_clusters[i])
@@ -336,7 +336,7 @@ relabelSmallClusters <- function(pca, n_clusters, sorted_clusters, seed = 123, t
   memb <- do.call(rbind, lapply(sort(unique(nearest_clusters)), function(i){
     if(length(which(sorted_clusters==i)) <= cohort_size){
       df <- data.frame(`membership:sample_set_id`=paste0("cluster_super_", i, "_COHORT"), 
-                       samples = row.names(pca)[which(nearest_clusters==i)], 
+                       samples = row.names(pca$x)[which(nearest_clusters==i)], 
                        check.names = FALSE)
       return(df)
     } else {
@@ -347,8 +347,8 @@ relabelSmallClusters <- function(pca, n_clusters, sorted_clusters, seed = 123, t
       cohort_label <- paste0("cluster_super_", i, "_COHORT")
       case_label <- paste0("cluster_super_", i, "_CASE")
       
-      cohort_samples <- row.names(pca)[cohort_subset_indexes]
-      case_samples <- row.names(pca)[case_subset_indexes]
+      cohort_samples <- row.names(pca$x)[cohort_subset_indexes]
+      case_samples <- row.names(pca$x)[case_subset_indexes]
       
       df <- data.frame(`membership:sample_set_id`=c(
         rep(cohort_label, length(cohort_samples)), 

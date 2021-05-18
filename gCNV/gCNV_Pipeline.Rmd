@@ -45,8 +45,8 @@ system2("java", sprintf("-Xmx16G -jar %s getCountsMatrix %s %scounts_matrix.tsv 
 - save the R PCA object
 a scree plot for the PCA loadings is generated to help visualize the data. 
 ```{r}
-wd <- "/path/to/working/directory/"
-counts_matrix_file_name <- "counts_matrix.tsv"
+wd <- "C:/Users/iwong/Documents/MGH/gCNV/testing/"
+counts_matrix_file_name <- "test_matrix_10k.tsv"
 pca <- getCountsPCA(paste0(wd, counts_matrix_file_name)) 
 save(pca, file=paste0(wd, "PCA_loadings.rda"))
 ```
@@ -54,7 +54,8 @@ save(pca, file=paste0(wd, "PCA_loadings.rda"))
 # Step 5 
 - create clusters 
 ```{r}
-n_clusters <- 30 # 30 is optimal for a cohort size of ~20,000 samples
+load(paste0(wd, "PCA_loadings.rda"))
+n_clusters <- 10 # 30 is optimal for a cohort size of ~20,000 samples
 cluster_results <- clusterPrimaryClusters(pca$x, n_clusters=n_clusters, wd = wd)
 print(cluster_results$cluster_counts)
 ```
@@ -62,8 +63,8 @@ print(cluster_results$cluster_counts)
 #Step 6
 Plot the clustering output. Change the 'choice' variable from 1 to 24 to cycle through the different clustering methods. (lower is "better")
 ```{r}
-choice <- 1
-sorted_clusters <- cluster_results$cluster_labels[[choice]]
+choice <- 3
+sorted_clusters <- cluster_results$cluster_labels[, row.names(cluster_results$cluster_counts)[choice] %>% as.integer()]
 cols <- rainbow(n_clusters)[sample(1:n_clusters, n_clusters)]
 plot3d(pca$x[,1:3], col=cols[sorted_clusters])
 ```
@@ -72,7 +73,7 @@ plot3d(pca$x[,1:3], col=cols[sorted_clusters])
 merge the small clusters to their nearest neighbor
 ```{r}
 membership <- relabelSmallClusters(pca = pca, n_clusters = n_clusters, sorted_clusters = sorted_clusters)
-write.table(membership$membership_file, "/path/to/write/membership_file/", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+write.table(membership$membership_file, paste0(wd, "membership_file.tsv"), sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
 ```
 
 ```{r}
@@ -85,7 +86,6 @@ if (!rgl.useNULL())
 ```
 
 
-2/1/2021 - develop tools to cluster new samples to old clusters
 ```{r}
 ssm <- read.table("C:/Users/iwong/Documents/MGH/ukbb/09_remainders/sample_set_membership.tsv", sep="\t", header=TRUE)
 old_membership <- read.table("C:/Users/iwong/Documents/MGH/ukbb/09_remainders/ukbb_cluster_memb.tsv", sep="\t", header=TRUE, stringsAsFactors = FALSE)
