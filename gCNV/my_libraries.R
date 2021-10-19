@@ -1,5 +1,5 @@
 if(unname(Sys.info()["sysname"]) != "Linux"){
-  library("rgl")  
+  library("rgl")
   library("parallel")
   library("plyr")
   library("factoextra")
@@ -8,7 +8,6 @@ if(unname(Sys.info()["sysname"]) != "Linux"){
   library("clValid")
   # library("GenomicRanges")
   library("gridExtra")
-  library("wesanderson")
   library("wesanderson")
   library("factoextra")
   library("ClusterR")
@@ -23,6 +22,8 @@ library("data.table")
 library("tidyverse")
 library("fortunes")
 library("cowsay")
+
+#COBALT
 
 
 srt <- function(x){sort(table(x), decreasing = TRUE)}
@@ -77,7 +78,8 @@ HashMap <- setRefClass("HashMap",
                            hash <<- new.env(hash = TRUE, parent = emptyenv(), size = 1000L)
                            callSuper(...)
                          },
-                         get = function(key) { unname(base::get(key, hash)) },
+                         # get = function(key) { unname(base::get(key, hash)) },
+                         get = function(key) { base::get(key, hash) },
                          put = function(key, value) { base::assign(key, value, hash) },
                          append = function(key, appendant){
                            if(base::exists(key, hash)){
@@ -93,7 +95,8 @@ HashMap <- setRefClass("HashMap",
                            rval <- vector("list", length(keys))
                            names(rval) <- keys
                            for(k in keys){
-                             rval[[k]] <- unname(base::get(k, hash))
+                             # rval[[k]] <- unname(base::get(k, hash))
+                             rval[[k]] <- base::get(k, hash)
                            }
                            return(rval)
                          },
@@ -141,7 +144,9 @@ HashMap <- setRefClass("HashMap",
                          },
                          size = function() { length(hash) },
                          isEmpty = function() { length(hash)==0 },
-                         remove = function(key) { .self$hash[[key]] <- NULL }, 
+                         remove = function(key) { 
+                           .self$hash[[key]] <- NULL 
+                           rm(key, envir = .self$hash)}, 
                          clear = function() { hash <<- new.env(hash = TRUE, parent = emptyenv(), size = 1000L) }
                        ) 
 )
@@ -173,6 +178,13 @@ aggregate_sample_manifests <- function(wd){
 }
 
 get_count_per_gene <- function(df00, genes, phenotypes, listSampleToDiagnosis) {
+  print(paste0("nrow df: ", nrow(df00) ))
+  print(paste0("n genes: ", lu(genes) ))
+  print(paste0("n phenotypes: ", lu(phenotypes) ))
+  print(paste0("\tphenotypes: ", phenotypes ))
+  print(paste0("n samples: ", length(listSampleToDiagnosis) ))
+  
+  print("generating map structure")
   df_count <- matrix(0, nrow=length(genes)*2, ncol=(1+length(phenotypes))) %>% as.data.frame( na.strings="!@#$")
   colnames(df_count) <- c("gene", phenotypes)
   temp1 <- expand.grid(genes, c("DUP", "DEL")) 
@@ -191,7 +203,13 @@ get_count_per_gene <- function(df00, genes, phenotypes, listSampleToDiagnosis) {
   
   df00 <- df00[df00$sample %in% names(listSampleToDiagnosis), ]
   
+  print("finished building map structure, begin counts")
+  
   for(i in seq_down(df00)){
+    
+    if(i %in% quantile(seq_down(df00), seq(0, 1, .1)) %>% unname %>% round){
+      print(paste0(i, " / ", nrow(df00)))
+    }
     
     curr_phenotypes <- listSampleToDiagnosis[[df00$sample[i]]]
     
@@ -373,7 +391,7 @@ clusterOnSex <- function(wd, membership_file, seed = 123){
   files <- list.files(wd, pattern=".exons.counts.tsv", full.names = TRUE, recursive = TRUE)
   
   cluster <- makeCluster(detectCores()-1)
-  clusterExport(cl=cluster, varlist=c("files", "str_replace_all"))
+  clusterExport(cl=cluster, varlist=c("files", "str_replace_all"), envir = environment())
   counts_dfs <- parLapply(cluster, files, function(x){
     cbind(read.table(x, sep="\t", header=TRUE, stringsAsFactors = FALSE, col.names = c("chr", "start", "end", "count"), comment.char = "@"),
           str_replace_all(basename(x), ".exons.counts.tsv", ""))
@@ -407,6 +425,13 @@ clusterOnSex <- function(wd, membership_file, seed = 123){
   })
   
   merged_counts$super_cluster <- merged_counts$membership %>% str_replace_all("_(COHORT|CASE)", "") %>% str_replace_all("_super", "")
+
+  n_super_clusters <- merged_counts$super_cluster %>% unique %>% length
+  super_clusters <- merged_counts$super_cluster %>% unique
+  merged_counts$sex_cluster <- "-1"
+  merged_counts$sex_cluster_sub <- "-1"
+  
+  list_plots <- vector("list", n_super_clusters + 1)
   
   g1 <- ggplot(merged_counts, aes(x=x, y=y, color=super_cluster)) + 
     geom_point() + 
@@ -415,11 +440,8 @@ clusterOnSex <- function(wd, membership_file, seed = 123){
     ggtitle("normalized chrX and chrY counts")
   print(g1)
   
+  list_plots[[1]] <- g1
   
-  n_super_clusters <- merged_counts$super_cluster %>% unique %>% length
-  super_clusters <- merged_counts$super_cluster %>% unique
-  merged_counts$sex_cluster <- "-1"
-  merged_counts$sex_cluster_sub <- "-1"
   
   clustering_method <- "hclust"
   
@@ -503,6 +525,8 @@ clusterOnSex <- function(wd, membership_file, seed = 123){
         ylab("normalized chrY counts") + 
         ggtitle(super_clusters[i]) 
     print(g2)
+    
+    list_plots[[1+i]] <- g2
         
     
     merged_counts$sex_cluster[merged_counts$super_cluster == super_clusters[i]] <- paste0(super_clusters[i], "_", labels) 
@@ -525,8 +549,13 @@ clusterOnSex <- function(wd, membership_file, seed = 123){
   
   table(merged_counts$sex_cluster_sub) %>% print
   memb <- data.frame(membership.sample_set_id=merged_counts$sex_cluster_sub, sample=merged_counts$sample)
-  return(memb)
   #write.table(memb, "C:/Users/iwong/Documents/MGH/membership.tsv", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+  
+  rval <- vector("list", 3)
+  rval[[1]] <- memb
+  rval[[2]] <- merged_counts
+  rval[[3]] <- list_plots
+  return(rval)
 }
 
 
