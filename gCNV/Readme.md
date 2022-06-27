@@ -20,10 +20,11 @@ java ${memb} -jar ${jar} annotateWithGenes -a strict -g ${gtf} -i ${name}_interm
 java ${memb} -jar ${jar} countExons -i ${name}_intermediate3.bed -c genes_strict_overlap -g ${gtf} -o ${name}_annotated.bed
 </pre>
 
+  \
+  \
+  \
+  \
   
-  
-  
-
 <pre>
         Version: 2.27
 
