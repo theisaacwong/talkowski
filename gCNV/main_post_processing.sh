@@ -1,7 +1,7 @@
 #!/bin/bash
-name="TEST"
+name="MY_COHORT"
 gtf="/mgh/references/gencode.v34.annotation.gtf"
-jar="/mgh/gCNV/testing/sample_set_SPARK2/gh.jar"
+jar="/mgh/gCNV/gCNV_helper.jar"
 memb="-Xmx30G"
 java ${memb} -jar ${jar} convertVCFsToBEDFormat -d ./ -o ${name}_vcftobed.bed -p genotyped-segments- -s .vcf
 java ${memb} -jar ${jar} bedcluster -i ${name}_vcftobed.bed  -o ${name}_bedclustered.bed
