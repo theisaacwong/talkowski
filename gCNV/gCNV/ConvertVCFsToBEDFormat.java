@@ -105,6 +105,18 @@ public class ConvertVCFsToBEDFormat extends gCNVHelperTool {
 					name.add(directories[i].getName() + "_cnv_" + cnvNameCounter);
 					cnvNameCounter++;
 				}
+				ArrayList<String> batch = new ArrayList<>();
+				String[] CASE_CONTROL_TAGS = {"CASE", "COHORT", "case", "cohort", "Case", "Cohort"};
+				for (int j = 0; j < VCFsArrayList.get(k).nrow(); j++) {
+					String tempBatch = directories[i].getName();
+					for(String s : CASE_CONTROL_TAGS) {
+						tempBatch = tempBatch.replaceAll(s, "");
+					}
+					if(tempBatch.endsWith("_")) {
+						tempBatch = tempBatch.substring(0, tempBatch.length() - 1);
+					}
+					batch.add(tempBatch);
+				}
 				ArrayList<String> sample = new ArrayList<>();
 				for (int j = 0; j < VCFsArrayList.get(k).nrow(); j++) {
 					sample.add(sampleNames.get(k).replace(prefixRegex, "").replace(suffixRegex, ""));
@@ -146,6 +158,8 @@ public class ConvertVCFsToBEDFormat extends gCNVHelperTool {
 				columnValuesToAdd.add(end);
 				columnNamesToAdd.add("name");
 				columnValuesToAdd.add(name);
+				columnNamesToAdd.add("batch");
+				columnValuesToAdd.add(batch);
 				columnNamesToAdd.add("sample");
 				columnValuesToAdd.add(sample);
 				columnNamesToAdd.addAll(newColumnNames);
@@ -269,7 +283,11 @@ public class ConvertVCFsToBEDFormat extends gCNVHelperTool {
 		for (int i = 1; i < all_bed_paths.size(); i++) {
 			fullMergedBed.rbind(new DataFrame(all_bed_paths.get(i), true, "\\t", "@"));
 		}
-		System.out.println(wd + output);
+		
+		if(output.contains(wd)) {
+			
+		}
+		System.out.println(wd + output.contains(wd));
 		fullMergedBed.writeFile(wd + output, true);
 
 	}

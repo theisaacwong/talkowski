@@ -45,7 +45,6 @@ public abstract class gCNVHelperTool {
 	public String[] requiredArgs;
 	
 	public ArgParser args;
-	public String[] toolArgs;
 	
 	public gCNVHelperTool(ArgParser args, String[] toolArgs) {
 		this.args = args;
@@ -56,7 +55,7 @@ public abstract class gCNVHelperTool {
 	}
 	
 	public boolean validate() {
-		return args.validate(toolArgs);
+		return args.validate(requiredArgs);
 	}
 	
 	public void run() throws IOException, InterruptedException {

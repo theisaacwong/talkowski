@@ -6,7 +6,7 @@ import java.util.Scanner;
 
 public class Help extends gCNVHelperTool {
 
-	public static String[] inputs = new String[] {};
+	public static String[] inputs = new String[] {"--help"};
 	
 	public Help(ArgParser args) {
 		super(args, inputs);

@@ -32,7 +32,7 @@ public class gCNV_helper {
 	public final String CHR = "CHR";
 	public final String START = "START";
 	public final String END = "END";
-	public static final String VERSION = "2.25";
+	public static final String VERSION = "2.27";
 
 	public gCNV_helper(String[] args) {
 		initializationArgs = args;
@@ -149,13 +149,7 @@ public class gCNV_helper {
 		
 		String toolName = userArgs.get("toolname");
 		switch (toolName) {
-		case "-help" -> {
-			gCNVHelperTool = new Help(userArgs);
-		}
-		case "--help" -> {
-			gCNVHelperTool = new Help(userArgs);
-		}
-		case "-h" -> {
+		case "help" -> {
 			gCNVHelperTool = new Help(userArgs);
 		}
 		case "addGnomadAnnotations" -> {
@@ -224,17 +218,23 @@ public class gCNV_helper {
 		case "transposeTSV" -> {
 			gCNVHelperTool = new TransposeTSV(userArgs);
 		}
+		case "updateNP" -> {
+			gCNVHelperTool = new updateNP(userArgs);
+		}
 		case "validateSubsetAnnotations" -> {
 			gCNVHelperTool = new ValidateSubsetAnnotations(userArgs);
 		}
 		default -> {
 			System.out.println("unknown command: " + toolName);
-			gCNVHelperTool = new Help(userArgs);
+//			gCNVHelperTool = new Help(userArgs);
 		}
 
 		}
 
-		gCNVHelperTool.run();
+		if(gCNVHelperTool.validate()) {
+			gCNVHelperTool.run();	
+		}
+		
 
 	}
 

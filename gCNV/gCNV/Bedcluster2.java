@@ -12,11 +12,11 @@ import java.util.HashSet;
 import java.util.PriorityQueue;
 import java.util.TreeSet;
 
-public class Bedcluster extends gCNVHelperTool{
+public class Bedcluster2 extends gCNVHelperTool{
 
 	public static String[] inputs = new String[] {INPUT_PATH, OUTPUT_PATH};
 	
-	public Bedcluster(ArgParser args) {
+	public Bedcluster2(ArgParser args) {
 		super(args, inputs);
 	}
 
@@ -385,14 +385,6 @@ public class Bedcluster extends gCNVHelperTool{
 					String[] mergedRow = df.get(sampleToVariantToIndexes.get(sample).get(variant).get(0)).clone();
 					mergedRow[df.columnMapping.get("start")] = Integer.toString(minStart);
 					mergedRow[df.columnMapping.get("end")] = Integer.toString(maxEnd);
-					
-					// recalculate NP
-					int[] npArray = new int[sampleToVariantToIndexes.get(sample).get(variant).size()];
-					int j = 0;
-					for(int i : sampleToVariantToIndexes.get(sample).get(variant)) {
-						npArray[j] = Integer.parseInt(df.get("NP", i));
-						j++;
-					}
 
 					rowsToAdd.add(mergedRow);
 					rowsToDelete.addAll( sampleToVariantToIndexes.get(sample).get(variant));
@@ -409,6 +401,56 @@ public class Bedcluster extends gCNVHelperTool{
 		for(String[] newRow : rowsToAdd) {
 			df.df.add(newRow);
 		}
+
+
+		//		//calculate rmsstd, convert to median coordinates for start and end
+		//		// should probably make this a method
+		//		DecimalFormat format = new DecimalFormat("#.####");
+		//		HashMap<String, String> variantToRmsstd = new HashMap<>();
+		//		HashMap<String, ArrayList<Integer>> variantToIndexes = new HashMap<>();
+		//		HashMap<String, String> variantToMedianStartCoordinate = new HashMap<>();
+		//		HashMap<String, String> variantToMedianEndCoordinate = new HashMap<>();
+		//		for(int i = 0; i < df.size(); i++) {
+		//			String variant = df.get(variantName, i);
+		//			if(!variantToIndexes.containsKey(variant)) {
+		//				variantToIndexes.put(variant, new ArrayList<>());
+		//			}
+		//			variantToIndexes.get(variant).add(i);
+		//		}
+		//		for(String variant : variantToIndexes.keySet()) {
+		//			int n = variantToIndexes.get(variant).size();
+		//			double[] vstarts = new double[n];
+		//			double[] vends = new double[n];
+		//			for(int i = 0; i < n; i++) {
+		//				vstarts[i] = Double.parseDouble(df.get("start", variantToIndexes.get(variant).get(i)));
+		//				vends[i] = Double.parseDouble(df.get("end", variantToIndexes.get(variant).get(i)));
+		//			}
+		//			variantToMedianStartCoordinate.put(variant, median(vstarts));
+		//			variantToMedianEndCoordinate.put(variant, median(vends));
+		//			variantToRmsstd.put(variant, format.format((rmsstd(vstarts, vends))));
+		//		}
+		//		ArrayList<String> rmsstd = new ArrayList<>();
+		//		ArrayList<String> medStarts = new ArrayList<>();
+		//		ArrayList<String> medEnds = new ArrayList<>();
+		//		for(int i = 0; i < df.size(); i++) {
+		//			rmsstd.add(variantToRmsstd.get(df.get(variantName, i)));
+		//			medStarts.add(variantToMedianStartCoordinate.get(df.get(variantName, i)));
+		//			medEnds.add(variantToMedianEndCoordinate.get(df.get(variantName, i)));
+		//		}
+		//
+		//		columnNamesToAdd = new ArrayList<>();
+		//		columnValuesToAdd = new ArrayList<>();
+		//		
+		//		columnNamesToAdd.add("rmsstd");
+		//		columnNamesToAdd.add("medStart");
+		//		columnNamesToAdd.add("medEnd");
+		//		
+		//		columnValuesToAdd.add(rmsstd);
+		//		columnValuesToAdd.add(medStarts);
+		//		columnValuesToAdd.add(medEnds);
+		//		
+		//		df.addColumns(columnNamesToAdd, columnValuesToAdd);
+
 
 		//calculate rmsstd
 		DecimalFormat format = new DecimalFormat("#.####");
