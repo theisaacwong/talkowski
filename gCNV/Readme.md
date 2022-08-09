@@ -26,7 +26,7 @@ java ${memb} -jar ${jar} countExons -i ${name}_intermediate3.bed -c genes_strict
   \
   
 <pre>
-        Version: 2.27
+        Version: 2.29
 
         java -jar gCNV_helper.jar [Command] [required argument(s)] {optional arguement(s)}
 
