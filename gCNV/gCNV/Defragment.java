@@ -249,9 +249,10 @@ public class Defragment extends gCNVHelperTool {
 
 
 		Collections.sort(allIndexesDefragged, Collections.reverseOrder());
-		for (int i = 0; i < allIndexesDefragged.size(); i++) {
-			gcnv.df.remove((int) (allIndexesDefragged.get(i)));
-		}
+		gcnv.removeMultipleLines(allIndexesDefragged);
+//		for (int i = 0; i < allIndexesDefragged.size(); i++) {
+//			gcnv.df.remove((int) (allIndexesDefragged.get(i)));
+//		}
 
 		ArrayList<String> boolDefragmented_1 = new ArrayList<>();
 		for (int i = 0; i < gcnv.nrow(); i++) {

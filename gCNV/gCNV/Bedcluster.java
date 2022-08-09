@@ -288,6 +288,7 @@ public class Bedcluster extends gCNVHelperTool{
 		visitedStarts.clear();
 		visitedEnds.clear();
 
+//		System.out.println("checkpoint 2");
 		ArrayList<Integer> indexKeys = new ArrayList<>();
 		indexKeys.addAll(indexToIndexes.keySet());
 		Collections.sort(indexKeys);
@@ -304,6 +305,7 @@ public class Bedcluster extends gCNVHelperTool{
 		observedOverlaps.clear();
 		indexToObservedOverlapsForI2I.clear();
 
+//		System.out.println("checkpoint 3");
 		if(writeIndexMap) {
 			ArrayList<Integer> temp = new ArrayList<>();
 			temp.addAll(indexToIndexes.keySet());
@@ -318,6 +320,7 @@ public class Bedcluster extends gCNVHelperTool{
 
 		//post-process
 
+//		System.out.println("checkpoint 4");
 		ArrayList<String> cluster_labels = new ArrayList<>();
 		ArrayList<String> newStarts = new ArrayList<>();
 		ArrayList<String> newEnds = new ArrayList<>();
@@ -340,6 +343,7 @@ public class Bedcluster extends gCNVHelperTool{
 			}
 		}
 
+//		System.out.println("checkpoint 5");
 		ArrayList<String> columnNamesToAdd = new ArrayList<>();
 		ArrayList<ArrayList<String>> columnValuesToAdd = new ArrayList<>();
 
@@ -368,7 +372,7 @@ public class Bedcluster extends gCNVHelperTool{
 			sampleToVariantToIndexes.get(sample).get(variant).add(i);
 		}
 
-
+//		System.out.println("checkpoint 1");
 		//it looks like a lot of nested loops, however there will only be i iterations total
 		HashSet<Integer> rowsToDelete = new HashSet<>();
 		ArrayList<String[]> rowsToAdd = new ArrayList<>();
@@ -400,17 +404,30 @@ public class Bedcluster extends gCNVHelperTool{
 			}
 		}
 
+		System.out.println("removing duplicates");
 		ArrayList<Integer> rowsToDeleteList = new ArrayList<>();
 		rowsToDeleteList.addAll(rowsToDelete);
 		Collections.sort(rowsToDeleteList, Collections.reverseOrder());
-		for(int i = 0; i < rowsToDeleteList.size(); i++) {
-			df.df.remove((int)rowsToDeleteList.get(i));
-		}
+		System.out.println(rowsToDeleteList.size() + " rows to remove");
+//		System.out.println("row to delete:");
+//		System.out.println("");
+//		for(int i = 0; i < rowsToDeleteList.size(); i++) {
+//			System.out.print(rowsToDeleteList.get(i) + ",");
+//		}
+		df.removeMultipleLines(rowsToDeleteList);
+//		for(int i = 0; i < rowsToDeleteList.size(); i++) {
+//			df.df.remove((int)rowsToDeleteList.get(i));
+//		}
+		System.out.println(rowsToAdd.size() + " rows to add");
+//		for(String[] newRow : rowsToAdd) {
+//			System.out.println(Arrays.toString(newRow));
+//		}
 		for(String[] newRow : rowsToAdd) {
 			df.df.add(newRow);
 		}
 
 		//calculate rmsstd
+		System.out.println("calculating rmsstd");
 		DecimalFormat format = new DecimalFormat("#.####");
 		HashMap<String, String> variantToRmsstd = new HashMap<>();
 		HashMap<String, ArrayList<Integer>> variantToIndexes = new HashMap<>();
@@ -436,9 +453,11 @@ public class Bedcluster extends gCNVHelperTool{
 			rmsstd.add(variantToRmsstd.get(df.get(variantName, i)));
 		}
 
+//		System.out.println("checkpoint 8");
 		df.addColumn("rmsstd", rmsstd);
 
 
+//		System.out.println("checkpoint 9");
 		df.writeFile(output_file, true);
 
 	}
