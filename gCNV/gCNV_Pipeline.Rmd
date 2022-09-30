@@ -304,12 +304,14 @@ for(i in seq_along(unique(sex_ploidy_dfs$sample))){
 ```
 
 
+
 Main Figures
 variant count boxplots
 ```{r}
-wd <- ""
-gcnv <- read(wd, "_annotated.bed")
-ploidy_samples <- read.table("aneuploidy_samples.tsv", sep="\t", header=TRUE)
+wd <- "C:/MGH/gCNV/"
+gcnv <- fread("C:/MGH/gCNV/gCNV_annotated.bed") %>% as.data.frame()
+ploidy_samples <- read.table("C:/MGH/aneuploidy_samples.tsv", header = TRUE, sep="\t")$sample
+cohort_name <- "MY_COHORT"
 
 qs_window <- seq(0, 100, 10)
 total_variants <- rep(0, length(qs_window))
@@ -337,21 +339,23 @@ df$n_variants_log2 <- (df$n_variants) %>% log2
 df$n_variants_log10 <- df$n_variants %>% log10
 
 gcnvhq <- gcnv[gcnv$HIGH_QUALITY, ]
-write.table(gcnvhq, paste0(wd, "gcnv_HQ.tsv"), sep="\t", row.names = FALSE, col.names = TRUE, quote=FALSE)
 ```
 
-# failure rate per batch
+
+failure rate per batch
+overall failure rate is 1.7%
 ```{r}
 df00 <- gcnv
+df00 <- df00[!(df00$chr == "chrX" | df00$chr == "chrY"), ]
 df00 <- df00[match(unique(df00$sample), df00$sample), ]
-df00$batch <- df00$name %>% str_extract_all("(A|B)_\\d*(?=_)") %>% unlist
+# df00$batch <- df00$name %>% str_extract_all("(?<=_)\\d*_(CASE|COHORT)(?=_)") %>% unlist
 batchToSample <- HashMap$new()
 batchToSample$populate_append(df00, "batch", "sample")
 sampleToPassRaw <- HashMap$new()
 sampleToPassHQ <- HashMap$new()
 sampleToPassFinal <- HashMap$new()
-sampleToPassRaw$populate(df00, "sample", "lt100_raw_calls")
-sampleToPassHQ$populate(df00, "sample", "lt10_highQS_rare_calls")
+sampleToPassRaw$populate(df00, "sample", "lt200_raw_calls")
+sampleToPassHQ$populate(df00, "sample", "lt35_QS20_rare_calls")
 sampleToPassFinal$populate(df00, "sample", "PASS_SAMPLE")
 
 batches <- df00$batch %>% u 
@@ -393,26 +397,83 @@ lm_eqn <- function(df){
     as.character(as.expression(eq));
 }
 
-g0 <- ggplot(perBatchRate, aes(x=N, y=all)) + 
-  geom_point() + 
+perBatchRate$GROUP <- grepl("CASE", perBatchRate$batch) %>% ifelse("CASE", "COHORT")
+
+fail_pct <- round(100* (1 - length(which(df00$PASS_SAMPLE)) / nrow(df00)), 3)
+
+g0 <- ggplot(perBatchRate[perBatchRate$N >= 10 & perBatchRate$N <= 8000, ], aes(x=N, y=all)) + 
+  geom_point(alpha = 0.3) + 
   xlab("N samples per batch") + 
   ylab("sample pass rate (%)") + 
-  ggtitle("per batch sample failure rate") +
+  ggtitle(paste0("per batch sample failure rate; ", fail_pct, "%")) +
   theme(plot.title = element_text(hjust = 0.5)) +
-  stat_summary(fun.data= mean_cl_normal) + 
+  # stat_summary(fun.data= mean_cl_normal) + 
   geom_smooth(method='lm') + 
-  geom_text(x = 3000, y = 92.5, label = lm_eqn(perBatchRate), parse = TRUE)
-
+  geom_text(x = median(perBatchRate$N), y = 40, label = lm_eqn(perBatchRate), parse = TRUE) + 
+  coord_cartesian(xlim=c( min(perBatchRate$N) - 10, max(perBatchRate$N) + 10), ylim = c(0, 100)) 
 g0
 
-write.table(perBatchRate, "per_batch_failure_rate.tsv", sep="\t", col.names = TRUE, row.names = FALSE, quote=FALSE)
+df01 <- gcnv[match(unique(gcnv$sample), gcnv$sample), ]
 ```
 
 
 ```{r}
+ASC <- read.table("C:/MGH/ASC_benchmark/ASC_annotated.bed", sep="\t", header=TRUE)
+asc_hq <- ASC[ASC$HIGH_QUALITY, ]
+gcnv_hq <- gcnv[gcnv$HIGH_QUALITY, ]
+
+COHORT <- "MY_COHORT"
+
+no_hq_asc <-ASC$sample[(!ASC$sample %in% asc_hq$sample) & (ASC$PASS_SAMPLE)] %>% lu
+no_hq_gcnv <-gcnv$sample[!gcnv$sample %in% gcnv_hq$sample & (gcnv$PASS_SAMPLE)] %>% lu
+
+temp0 <- srt(asc_hq$sample) %>% srt %>% as.data.frame(stringsAsFactors=FALSE)
+temp0$x <- temp0$x %>% as.integer()
+temp0$Cohort <- "ASD"
+gte_10 <- data.frame(x = 10, Freq = sum(temp0$Freq[temp0$x >= 10]), Cohort="ASD", stringsAsFactors = FALSE)
+eq_0 <- data.frame(x = 0, Freq = no_hq_asc, Cohort="ASD", stringsAsFactors = FALSE)
+temp0 <- temp0[temp0$x < 10, ]
+temp0 <- rbind(temp0, gte_10, eq_0)
+temp0 <- temp0[order(temp0$x, decreasing = FALSE), ]
+temp0$prop <- temp0$Freq / sum(temp0$Freq) * 100
+temp0$cum_prop <- cumsum(temp0$Freq) / sum(temp0$Freq)
+
+
+
+temp1 <- srt(gcnv_hq$sample) %>% srt %>% as.data.frame(stringsAsFactors=FALSE)
+temp1$x <- temp1$x %>% as.integer()
+temp1$Cohort <- COHORT
+gte_10 <- data.frame(x = 10, Freq = sum(temp1$Freq[temp1$x >= 10]), Cohort=COHORT, stringsAsFactors = FALSE)
+eq_0 <- data.frame(x = 0, Freq = no_hq_gcnv, Cohort=COHORT, stringsAsFactors = FALSE)
+temp1 <- temp1[temp1$x < 10, ]
+temp1 <- rbind(temp1, gte_10, eq_0)
+temp1 <- temp1[order(temp1$x, decreasing = FALSE), ]
+temp1$prop <- temp1$Freq / sum(temp1$Freq) * 100
+temp1$cum_prop <- cumsum(temp1$Freq) / sum(temp1$Freq)
+
+temp2 <- rbind(temp0, temp1)
+temp2$cum_prop <- temp2$cum_prop * 100
+
+g02 <- ggplot(temp2, aes(x=x, y = prop, fill=Cohort)) + 
+  geom_bar(position = "dodge", stat="identity") + 
+  scale_x_continuous(breaks = 0:10, labels = c(0:9, "10+")) + 
+  scale_y_continuous(breaks = seq(0, 40, 10)) + 
+  ylab("Percent of samples") + 
+  xlab("Number of HQ CNVs")
+g03 <- ggplot(temp2, aes(x = x, y = cum_prop)) +
+  geom_line(aes(colour=Cohort), size=2) +
+  scale_x_continuous(breaks = 0:10, labels = c(0:9, "10+")) + 
+  scale_y_continuous(breaks = seq(0, 100, 10)) + 
+  ylab("Percent of samples") + 
+  xlab("Cumulative Number of HQ CNVs")
+g02
+g03
+```
+
+```{r}
 g1 <- ggplot(df, aes(x=qs_threshold, y=n_variants)) +
   geom_boxplot(outlier.size = NA, outlier.shape = NA, color=wes_palette("Zissou1")[1], fill=wes_palette("Zissou1")[2], alpha=0.6) + 
-  coord_cartesian(ylim = c(0, 40)) +
+  coord_cartesian(ylim = c(0, 15)) +
   xlab("QS threshold") + 
   ylab("# of Variants per sample") +
   ggtitle("Variants per sample, outliers not shown") +
@@ -474,34 +535,25 @@ g5
 
 
 
+
+
 number of variants vs number of exons
 ```{r}
-cohort_name <- ""
-if(FALSE){
+for(BOOL_ALL in c(TRUE, FALSE)){
+if(BOOL_ALL){
   qual_type <- "raw"
   dup_count <- gcnv[gcnv$svtype=="DUP" & gcnv$chr!="chrX" & gcnv$chr!="chrY" & gcnv$genes_any_overlap_totalExons!="NA", ]
   del_count <- gcnv[gcnv$svtype=="DEL" & gcnv$chr!="chrX" & gcnv$chr!="chrY" & gcnv$genes_any_overlap_totalExons!="NA", ]  
   nvarps <- c(0, 6)
+  n_samples_denom <- lu(gcnv$sample)
 } else {
   qual_type <- "HQ"
   dup_count <- gcnv[gcnv$svtype=="DUP" & gcnv$HIGH_QUALITY & gcnv$chr!="chrX" & gcnv$chr!="chrY" & gcnv$genes_any_overlap_totalExons!="NA", ]
   del_count <- gcnv[gcnv$svtype=="DEL" & gcnv$HIGH_QUALITY & gcnv$chr!="chrX" & gcnv$chr!="chrY" & gcnv$genes_any_overlap_totalExons!="NA", ]  
   nvarps <- c(0, 0.9)
+  n_samples_denom <- lu(gcnv$sample[gcnv$PASS_SAMPLE])
 }
 
-if(FALSE){
-  ploidy_samples_df <- read.table("C:/Users/iwong/Documents/MGH/ukbb/08_QC/aneuploidy_samples.tsv", sep="\t", header=TRUE)
-  list_by_aneu_bool_to_remove <- lapply(seq_down(ploidy_samples_df), function(x) {
-    bool_same_sample <- gcnv$sample == ploidy_samples_df$sample[x]
-    bool_same_chr <- gcnv$chr == ploidy_samples_df$CONTIG[x]
-    return(as.integer(bool_same_sample & bool_same_chr))
-  })
-  bool_df <- list2DF(list_by_aneu_bool_to_remove)
-  bool_to_keep <- rowSums(bool_df) == 0
-  gcnv <- gcnv[bool_to_keep, ]
-} else{
-  
-}
 
 del_count$n_exons <- del_count$genes_any_overlap_totalExons
 dup_count$n_exons <- dup_count$genes_any_overlap_totalExons
@@ -532,7 +584,7 @@ df_dup$type <- "DUP"
 df <- rbind(df_del, df_dup)
 df$log2_nvars <- log2(df$nvariants)
 df$log2_nexons <- log2(df$nexons)
-df$nvariants_per_sample <- df$nvariants / lu(gcnv$sample)
+df$nvariants_per_sample <- df$nvariants / n_samples_denom
 
 # singletons
 singletons_del <- which(table(del_count$variant_name[!del_count$sample %in% ploidy_samples])==1) %>% names
@@ -552,6 +604,7 @@ df2_del$proportion <- df2_del$nvariants_single/df2_del$nvariants*100
 df2_del$type <- "DEL"
 
 singletons_dup <- which(table(dup_count$variant_name[!dup_count$sample %in% ploidy_samples])==1) %>% names
+# singletons_dup <- singletons_dup[!singletons_dup %in% to_rm]
 df_single_dup <- dup_count[dup_count$variant_name %in% singletons_dup, ]
 exon_table_single_dup <- table(df_single_dup$n_exons)
 exon_table_dup <- table(dup_count$n_exons)
@@ -569,10 +622,7 @@ df2_dup$type <- "DUP"
 
 df3 <- rbind(df2_del, df2_dup)
 df3$log2_nexons <- df3$nexons %>% log2
-```
 
-
-```{r}
 g6.1 <- ggplot(data=df, aes(x=log2_nexons, y=nvariants, group=type)) +
   geom_line(aes(colour=type), size=1.5) +
   scale_color_manual(values=c(wes_palette("FantasticFox1")[5], wes_palette("FantasticFox1")[3])) +
@@ -590,12 +640,64 @@ g6.2 <- ggplot(data=df, aes(x=log2_nexons, y=nvariants_per_sample, group=type)) 
   xlab("number of exons") + 
   ylab(paste0("number of ",qual_type ," variants per sample")) + 
   ggtitle(paste0(cohort_name, ", Distribution of ",qual_type ," CNVs per sample"))  +
-  coord_cartesian(xlim=c(2,12), ylim=nvarps)
+  #coord_cartesian(xlim=c(2,12), ylim=nvarps) 
+  coord_cartesian(xlim=c(2,12), ylim=c(0, ifelse(qual_type=="HQ", 1, 15))) 
 g6.1
 g6.2
+
+g7 <- ggplot(data=df3[df3$nexons<5000  , ], aes(x=log2_nexons, y=proportion, group=type)) +
+  geom_line(aes(colour=type), size=1.5) +
+  scale_color_manual(values=c(wes_palette("FantasticFox1")[5], wes_palette("FantasticFox1")[3])) +
+  theme(legend.position="bottom") + 
+  scale_x_continuous(breaks=0:12, labels=2^(0:12)) +
+  xlab("number of exons") + 
+  ylab("percent of singletons") + 
+  ggtitle(paste0(cohort_name, ", Distribution of ", qual_type, " CNVs, no chrX")) + 
+  ylim(0, 100) 
+g7
+
+if(BOOL_ALL){
+  g6.1_all <- g6.1
+  g6.2_all <- g6.2
+  g7_all <- g7
+} else {
+  g6.1_hq <- g6.1
+  g6.2_hq <- g6.2
+  g7_hq <- g7
+}
+}
 ```
 
 ```{r}
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+temp1 <- which(table(dup_count$variant_name[!dup_count$sample %in% ploidy_samples])==1) %>% names
+df_temp1 <- gcnv[gcnv$variant_name %in% temp1, ]
+df_temp1$pct <- range01(df_temp1$genes_any_overlap_totalExons) * 100
+df_temp1$thresh <- sample(1:20, size = nrow(df_temp1), replace = TRUE)
+df_temp1$rm <- df_temp1$pct > df_temp1$thresh
+table(df_temp1$rm)
+to_rm <- df_temp1$variant_name[df_temp1$rm]
+
+singletons_dup <- which(table(dup_count$variant_name[!dup_count$sample %in% ploidy_samples])==1) %>% names
+singletons_dup <- singletons_dup[!singletons_dup %in% to_rm]
+df_single_dup <- dup_count[dup_count$variant_name %in% singletons_dup, ]
+exon_table_single_dup <- table(df_single_dup$n_exons)
+exon_table_dup <- table(dup_count$n_exons)
+df_dup <- data.frame(nexons=names(exon_table_dup) %>% as.numeric(), nvariants=as.numeric(exon_table_dup))
+df_dup <- df_dup[order(df_dup$nexons, decreasing = FALSE),]
+df1_dup <- data.frame(nexons=names(exon_table_single_dup) %>% as.numeric(), nvariants_single=as.numeric(exon_table_single_dup))
+df1_dup <- df1_dup[order(df1_dup$nexons, decreasing = FALSE),]
+df2_dup <- merge(df_dup, df1_dup)
+for(i in seq(nrow(df2_dup)-1, 1, -1)){
+  df2_dup$nvariants[i] = df2_dup$nvariants[i] + df2_dup$nvariants[i+1]
+  df2_dup$nvariants_single[i] = df2_dup$nvariants_single[i] + df2_dup$nvariants_single[i+1]
+}
+df2_dup$proportion <- df2_dup$nvariants_single/df2_dup$nvariants*100
+df2_dup$type <- "DUP"
+
+df3 <- rbind(df2_del, df2_dup)
+df3$log2_nexons <- df3$nexons %>% log2
+
 g7 <- ggplot(data=df3[df3$nexons<5000  , ], aes(x=log2_nexons, y=proportion, group=type)) +
   geom_line(aes(colour=type), size=1.5) +
   scale_color_manual(values=c(wes_palette("FantasticFox1")[5], wes_palette("FantasticFox1")[3])) +
@@ -617,10 +719,7 @@ df$size <- (df$end - df$start)/1000
 df$size_log10 <- df$size %>% log10
 df$size_log2 <- df$size %>% log2
 df$HQ <- df$PASS_FREQ & df$PASS_QS & df$PASS_SAMPLE
-```
 
-
-```{r}
 g8 <- ggplot(data=df[df$size>0.125 & df$size<1500, ], aes(x=size_log2, fill=svtype)) +
   geom_histogram(alpha=0.7, position = "identity", aes(y = ..density..)) +
   scale_fill_manual(values=c(wes_palette("FantasticFox1")[5], wes_palette("FantasticFox1")[3])) +
@@ -640,55 +739,104 @@ g9 <- ggplot(data=df[df$size>0.125 & df$size<1500 & df$HQ, ], aes(x=size_log2, f
 g9
 ```
 
-dist of hq calls
-the proportion of samples with 0, 1, 2, 3, 4, and >4 HQ CNVs, and for each value on the X axi
+venn diagram
+
 ```{r}
-ASC <- read.table("ASC_benchmark_callset.bed", sep="\t", header=TRUE)
-asc_hq <- ASC[ASC$HIGH_QUALITY, ]
-gcnv_hq <- gcnv[gcnv$HIGH_QUALITY, ]
-
-no_hq_asc <-ASC$sample[!ASC$sample %in% asc_hq$sample] %>% lu
-no_hq_gcnv <-gcnv$sample[!gcnv$sample %in% gcnv_hq$sample] %>% lu
-
-temp0 <- srt(asc_hq$sample) %>% srt %>% as.data.frame(stringsAsFactors=FALSE)
-temp0$x <- temp0$x %>% as.integer()
-temp0$Cohort <- "ASD"
-gte_10 <- data.frame(x = 10, Freq = sum(temp0$x[temp0$x >= 10]), Cohort="ASD", stringsAsFactors = FALSE)
-eq_0 <- data.frame(x = 0, Freq = no_hq_asc, Cohort="ASD", stringsAsFactors = FALSE)
-temp0 <- temp0[temp0$x < 10, ]
-temp0 <- rbind(temp0, gte_10, eq_0)
-temp0 <- temp0[order(temp0$x, decreasing = FALSE), ]
-temp0$prop <- temp0$Freq / sum(temp0$Freq) * 100
-temp0$cum_prop <- cumsum(temp0$Freq) / sum(temp0$Freq)
+samp <- c(TRUE, FALSE)
+freq <- c(TRUE, FALSE)
+qs <- c(TRUE, FALSE)
+temp_df <- expand.grid(samp, freq, qs)
+colnames(temp_df) <- c("samp", "freq","qs")
+temp_df$count <- -1
+temp_df$percent_of_all_calls <- -1
+temp_df$per_sample <- -1
+for(i in 1:nrow(temp_df)){
+  temp_df$count[i] <- nrow(gcnv[gcnv$PASS_SAMPLE==temp_df$samp[i] & gcnv$PASS_FREQ==temp_df$freq[i] & gcnv$PASS_QS==temp_df$qs[i],])
+  temp_df$percent_of_all_calls[i] <- temp_df$count[i] / nrow(gcnv) * 100
+  temp_df$per_sample[i] <- temp_df$count[i] / (gcnv$sample %>% unique %>% length)
+}
 
 
-temp1 <- srt(gcnv_hq$sample) %>% srt %>% as.data.frame(stringsAsFactors=FALSE)
-temp1$x <- temp1$x %>% as.integer()
-temp1$Cohort <- "EPI"
-gte_10 <- data.frame(x = 10, Freq = sum(temp1$x[temp1$x >= 10]), Cohort="EPI", stringsAsFactors = FALSE)
-eq_0 <- data.frame(x = 0, Freq = no_hq_gcnv, Cohort="EPI", stringsAsFactors = FALSE)
-temp1 <- temp1[temp1$x < 10, ]
-temp1 <- rbind(temp1, gte_10, eq_0)
-temp1 <- temp1[order(temp1$x, decreasing = FALSE), ]
-temp1$prop <- temp1$Freq / sum(temp1$Freq) * 100
-temp1$cum_prop <- cumsum(temp1$Freq) / sum(temp1$Freq)
+length(unique(gcnv[gcnv$PASS_sample==temp_df$samp[i] & gcnv$PASS_freq==temp_df$freq[i] & gcnv$PASS_QS==temp_df$qs[i],]$sample))
+dim(gcnv[gcnv$PASS_sample==temp_df$samp[i] & gcnv$PASS_freq==temp_df$freq[i] & gcnv$PASS_QS==temp_df$qs[i],])
+length(unique(gcnv[gcnv$PASS_sample==temp_df$samp[i] & gcnv$PASS_freq==temp_df$freq[i] & gcnv$PASS_QS==temp_df$qs[i],]$name))
 
-temp2 <- rbind(temp0, temp1)
-temp2$cum_prop <- temp2$cum_prop * 100
+length(unique(gcnv$sample))
+dim(gcnv)
+gcnv$name <- seq_down(gcnv)
+length(unique(gcnv$name))
 
-g10 <- ggplot(temp2, aes(x=x, y = prop, fill=Cohort)) + 
-  geom_bar(position = "dodge", stat="identity") + 
-  scale_x_continuous(breaks = 0:10, labels = c(0:9, "10+")) + 
-  scale_y_continuous(breaks = seq(0, 40, 10)) + 
-  ylab("Percent of samples") + 
-  xlab("Number of HQ CNVs")
-g11 <- ggplot(temp2, aes(x = x, y = cum_prop)) +
-  geom_line(aes(colour=Cohort), size=2) +
-  scale_x_continuous(breaks = 0:10, labels = c(0:9, "10+")) + 
-  scale_y_continuous(breaks = seq(0, 100, 10)) + 
-  ylab("Percent of samples") + 
-  xlab("Cumulative Number of HQ CNVs")
+temp_df <- temp_df[, c(1,2,3,4,6,5)]
+temp_df
+
+pass_qs <- paste0(gcnv$sample[gcnv$PASS_QS], gcnv$name[gcnv$PASS_QS])
+pass_freq <- paste0(gcnv$sample[gcnv$PASS_FREQ], gcnv$name[gcnv$PASS_FREQ])
+pass_samp <- paste0(gcnv$sample[gcnv$PASS_SAMPLE], gcnv$name[gcnv$PASS_SAMPLE])
+
+pass_qs %>% length()
+pass_freq %>% length()
+pass_samp %>% length()
+
+library(RColorBrewer)
+myCol <- brewer.pal(3, "Pastel2")
+myCol <- wes_palette("Darjeeling1")[1:3]
+library(VennDiagram)
+venn.diagram(
+  x = list(pass_qs, pass_freq, pass_samp),
+  category.names = c(paste0("pass_qs (", format(length(pass_qs), big.mark = ",", scientific = FALSE),")"),
+                     paste0("pass_freq (", format(length(pass_freq), big.mark = ",", scientific = FALSE),")"),
+                     paste0("pass_sample (", format(length(pass_samp), big.mark = ",", scientific = FALSE),")")),
+  filename = paste0(wd, 'venn_diagramm.png'),
+  output=TRUE,
+  print.mode = c("raw", "percent"),
+  
+  # Output features
+  imagetype="png" ,
+  height = 900 , 
+  width = 900 , 
+  resolution = 300,
+  compression = "lzw",
+  
+  # Circles
+  lwd = 2,
+  lty = 'blank',
+  fill = myCol,
+  
+  # Numbers
+  cex = .6,
+  fontface = "bold",
+  fontfamily = "sans",
+  
+  # Set names
+  cat.cex = 0.6,
+  cat.fontface = "bold",
+  cat.default.pos = "outer",
+  cat.pos = c(-27, 25, 155),
+  cat.dist = c(0.055, 0.055, 0.055),
+  cat.fontfamily = "sans",
+  rotation = 1
+)
 ```
+
+```{r}
+ggsave(filename="g0.png", plot=g0, device = "png", path=wd, width=1400, height=1000, units="px", scale=1)
+ggsave(filename="g02.png", plot=g02, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g03.png", plot=g03, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g1.png", plot=g1, device = "png", path=wd, width=2500, height=1800, units="px", scale=1)
+ggsave(filename="g2.png", plot=g2, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g3.png", plot=g3, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g4.png", plot=g4, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g5.png", plot=g5, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g6.1.all.png", plot=g6.1_all, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g6.2.all.png", plot=g6.2_all, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g7.all.png", plot=g7_all, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g6.1.hq.png", plot=g6.1_hq, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g6.2.hq.png", plot=g6.2_hq, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g7.hq.png", plot=g7_hq, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g8.png", plot=g8, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+ggsave(filename="g9.png", plot=g9, device = "png", path=wd, width=1800, height=1800, units="px", scale=1)
+```
+
 
 
 
