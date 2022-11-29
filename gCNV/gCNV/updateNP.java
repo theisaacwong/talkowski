@@ -71,6 +71,14 @@ public class updateNP extends gCNVHelperTool {
 		
 		print("done");
 		
+//		System.out.println(batchToChrToIndexes.size());
+//		System.out.println(batchToChrToIndexes.keySet());
+//		System.out.println("\n");
+////		
+//		System.out.println(batchToChrToIndexes.get("cluster_xy_791").size());
+//		System.out.println(batchToChrToIndexes.get("cluster_xy_791").keySet());
+//		System.out.println("\n");
+//		
 //		ArrayList<String> newNP = new ArrayList<>();
 		for(int i = 0; i < gcnv.nrow(); i++) {
 			String currBatch = gcnv.get("batch", i);
@@ -82,14 +90,23 @@ public class updateNP extends gCNVHelperTool {
 			
 			ArrayList<Integer> currStarts = batchToChrToStarts.get(currBatch).get(currChr);
 			ArrayList<Integer> currIndexes = batchToChrToIndexes.get(currBatch).get(currChr);
-			int index = Math.max(Collections.binarySearch(currStarts, currStart) - 10, 0);
+//			int index = Math.max(Collections.binarySearch(currStarts, currStart) - 2, 0);
+			int rawIndex = Collections.binarySearch(currStarts, currStart);
+			int index = rawIndex >= 0 ? Math.max(rawIndex - 1, 0) : Math.min(currStarts.size()-1, -1 - rawIndex );
+
+//			print(rawIndex + " / " + currIndexes.size());
+//			print(index + " / " + currIndexes.size());
 			
 			for(int j = index; j < currIndexes.size(); j++) {
 				int k = currIndexes.get(j);
 				boolean boolStart = Integer.parseInt(currIF.get("start", k)) <= currEnd;
 				boolean boolEnd = Integer.parseInt(currIF.get("end", k)) >= currStart;
+//				print(Integer.parseInt(currIF.get("start", k)) + "  " + Integer.parseInt(currIF.get("end", k)) + "  " + currStart + "-" + currEnd);
 				if(boolStart && boolEnd) {
 					count++;
+				}
+				if(Integer.parseInt(currIF.get("start", k)) > currEnd) {
+					break;
 				}
 			}
 			
