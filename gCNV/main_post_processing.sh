@@ -8,7 +8,7 @@ jar="/mgh/scripts/gCNV_helper.jar"
 memb="-Xmx30G"
 java ${memb} -jar ${jar} downloadSegmentsVCFs -m sample_set_entity.tsv -d ./ -c genotyped_segments_vcfs
 java ${memb} -jar ${jar} downloadFilteredIntervals -m sample_set_entity.tsv -d ./ -c filtered_intervals -o filtered_intervals.txt
-java ${memb} -jar ${jar} convertVCFsToBEDFormat -d ./ -o ${name}_vcftobed.bed -p genotyped-segments- -s .vcf
+java ${memb} -jar ${jar} convertVCFsToBEDFormat -d ./ -o ${name}_vcftobed.bed -p genotyped-segments- -s .vcf.gz
 java ${memb} -jar ${jar} defragment -i ${name}_vcftobed.bed -o ${name}_defragmented.bed -m filtered_intervals.txt
 java ${memb} -jar ${jar} bedcluster -i ${name}_defragmented.bed  -o ${name}_bedclustered.bed
 java ${memb} -jar ${jar} calculateFrequency -i ${name}_bedclustered.bed -c variant_name -o ${name}_frequencied.bed
